@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Microreactor Experiment Planner | Scherrmann Lab</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Roboto+Mono&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary: #4285F4; --primary-light: #E8F0FE; --primary-dark: #3367D6;
+            --secondary: #34A853; --accent: #EA4335; --warning: #FBBC05;
+            --bg-color: #F8F9FA; --card-bg: #FFFFFF; --text-primary: #202124;
+            --text-secondary: #5F6368; --border-color: #DADCE0; --success-bg: #E6F4EA;
+            --success-border: #B7DDBE; --warning-bg: #FCE8E6; --warning-text: #C5221F;
+            --critical-error-bg: #FAD2CF; --critical-error-border: #EA4335;
+            --critical-error-text: #A50E0E; --info-bg: #E8F0FE; --info-border: #AECBFA;
+            --shadow-sm: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
+            --shadow-md: 0 4px 6px rgba(0,0,0,0.1), 0 1px 3px rgba(0,0,0,0.08);
+            --radius-sm: 6px; --radius-md: 8px; --radius-lg: 12px;
+            --transition: all 0.2s ease-in-out;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Roboto', sans-serif; background-color: var(--bg-color); color: var(--text-primary); line-height: 1.6; padding: 0; margin: 0; }
+        .header { background-color: var(--primary); color: white; padding: 1.5rem 2rem; box-shadow: var(--shadow-sm); display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { font-weight: 500; font-size: 1.5rem; margin: 0; }
+        .header .logo { display: flex; align-items: center; gap: 0.75rem; }
+        .header .logo i { font-size: 1.25rem; }
+        .container { max-width: 1200px; margin: 2rem auto; padding: 0 1rem; }
+        .main-grid { display: grid; grid-template-columns: 1fr; gap: 1.5rem; }
+        @media (min-width: 992px) { .main-grid { grid-template-columns: 1fr 1fr; } }
+        .card { background-color: var(--card-bg); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); border: 1px solid var(--border-color); padding: 1.75rem; margin-bottom: 1.5rem; }
+        .card-header { display: flex; align-items: center; margin-bottom: 1.5rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--border-color); }
+        .card-header h2 { color: var(--primary); font-weight: 500; font-size: 1.25rem; margin: 0; display: flex; align-items: center; gap: 0.5rem; }
+        .card-header i { color: var(--text-secondary); }
+        
+        .input-group { margin-bottom: 1.1rem; display: flex; flex-wrap: wrap; align-items: center; }
+        .input-group label { 
+            flex: 1 1 210px; 
+            margin-right: 0.75rem; 
+            font-weight: 500; 
+            color: var(--text-secondary); 
+            font-size: 0.88rem; 
+            margin-bottom: 0.2rem; 
+            line-height: 1.3;
+        }
+        .input-group input, .input-group select { 
+            flex: 1.7 1 170px; 
+            padding: 0.6rem; 
+            border: 1px solid var(--border-color); 
+            border-radius: var(--radius-sm); 
+            font-family: inherit; 
+            font-size: 0.9rem; 
+            background-color: var(--card-bg); 
+            transition: var(--transition); 
+            min-width: 0; 
+        }
+        .input-group input:focus, .input-group select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(66, 133, 244, 0.15); outline: none; }
+        
+        @media (max-width: 768px) { 
+            .input-group label { flex-basis: 100%; margin-bottom: 0.4rem;} 
+            .input-group input, .input-group select { flex-basis: 100%; }
+        }
+
+        .button-group { text-align: center; margin: 2rem 0 1rem; }
+        button#generateButton { 
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 0.875rem 2rem;
+            border-radius: var(--radius-sm);
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: var(--transition);
+            box-shadow: var(--shadow-sm);
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        button#generateButton:hover:not(:disabled) {
+            background-color: var(--primary-dark);
+            box-shadow: var(--shadow-md);
+        }
+        button#generateButton:disabled {
+            background-color: var(--text-secondary);
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+        button#generateButton i {
+            margin-right: 0.25rem;
+        }
+
+        .results-section { margin-top: 2rem; }
+        #results { background: var(--info-bg); border: 1px solid var(--info-border); border-left: 4px solid var(--primary); padding: 1.25rem; margin-top: 1rem; white-space: pre-wrap; font-family: 'Roboto Mono', monospace; font-size: 0.85rem; overflow-x: auto; border-radius: var(--radius-sm); color: var(--text-primary); max-height: 400px; overflow-y: auto; }
+        .alert { padding: 1rem; border-radius: var(--radius-sm); margin: 1.5rem 0; font-size: 0.9rem; line-height: 1.5; }
+        .alert.warning { color: var(--warning-text); background-color: var(--warning-bg); border: 1px solid var(--warning-border); }
+        .alert.warning strong { color: var(--warning-text); }
+        .alert.critical-error { color: var(--critical-error-text); background-color: var(--critical-error-bg); border: 1px solid var(--critical-error-border); }
+        .alert.critical-error strong { color: var(--critical-error-text); }
+        .alert.success { color: var(--secondary); background-color: var(--success-bg); border: 1px solid var(--success-border); }
+        .alert.success strong { color: var(--secondary); }
+        .alert.info { color: var(--primary); background-color: var(--info-bg); border: 1px solid var(--info-border); }
+        #refillSummaryDisplay { background-color: var(--info-bg); border: 1px solid var(--info-border); padding: 1.25rem; border-radius: var(--radius-sm); margin-top: 1.5rem; }
+        #refillSummaryDisplay h3 { margin-top: 0; margin-bottom: 1rem; color: var(--primary-dark); font-weight: 500; font-size: 1.1rem; }
+        #refillSummaryDisplay h4 { margin-top: 1rem; margin-bottom: 0.5rem; color: var(--primary-dark); font-weight: 500; font-size: 1rem; }
+        #refillSummaryDisplay ul { padding-left: 1.25rem; margin-bottom: 1rem; list-style: none; }
+        #refillSummaryDisplay ul li { position: relative; padding-left: 1.2em; margin-bottom: 0.5rem; }
+        #refillSummaryDisplay ul li::before { content: "\f101"; font-family: "Font Awesome 6 Free"; font-weight: 900; position: absolute; left: 0; color: var(--primary); }
+        #downloadLink { display: block; margin: 1.5rem auto 0; text-align: center; color: var(--primary-dark); font-weight: 500; text-decoration: none; padding: 0.75rem 1.5rem; border-radius: var(--radius-sm); background-color: var(--card-bg); border: 1px solid var(--border-color); transition: var(--transition); width: fit-content; display: flex; align-items: center; gap: 0.5rem; }
+        #downloadLink:hover { background-color: #e9ecef; border-color: var(--primary-light); text-decoration: none; }
+        .badge { display: inline-block; padding: 0.25rem 0.5rem; border-radius: 50px; font-size: 0.75rem; font-weight: 500; background-color: var(--primary-light); color: var(--primary-dark); }
+        .footer { text-align: center; padding: 1.5rem; margin-top: 2rem; color: var(--text-secondary); font-size: 0.85rem; border-top: 1px solid var(--border-color); }
+        .footer #creationDateTime { display: block; }
+        @media (max-width: 768px) { .header { flex-direction: column; align-items: flex-start; gap: 0.5rem; padding: 1rem; } }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="logo">
+            <i class="fas fa-flask-vial"></i> <h1>Scherrmann's Microreactor Experiment Planner</h1>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="main-grid">
+            <div>
+                <div class="card">
+                    <div class="card-header">
+                        <h2><i class="fas fa-cog"></i> Experiment Parameters</h2>
+                    </div>
+                    <div class="input-group">
+                        <label for="reactorVolume">Reactor Volume VR (µL):</label>
+                        <input type="number" id="reactorVolume" value="500" min="1">
+                    </div>
+                    <div class="input-group">
+                        <label for="concA">Concentration of Sample A (mM):</label>
+                        <input type="number" id="concA" value="100" min="0">
+                    </div>
+                    <div class="input-group">
+                        <label for="concB">Concentration of Sample B (mM):</label>
+                        <input type="number" id="concB" value="100" min="0">
+                    </div>
+                    <div class="input-group">
+                        <label for="deadVolume1">Dead Volume Mixer to Reactor V1 (µL):</label>
+                        <input type="number" id="deadVolume1" value="62" min="0" title="Volume of tubing/mixer before the reactor. After Step 1, this volume contains the trailing part of the pumped reactant mixture.">
+                    </div>
+                    <div class="input-group">
+                        <label for="deadVolume2">Dead Volume Reactor to Collector V2 (µL):</label>
+                        <input type="number" id="deadVolume2" value="500" min="0">
+                    </div>
+                    <div class="input-group">
+                        <label for="collectVolumePerFraction">Collect Volume per Fraction (µL):</label>
+                        <input type="number" id="collectVolumePerFraction" value="100" min="1">
+                    </div>
+                     <div class="input-group">
+                        <label for="volumeReactantsSlugInput">Total Reactant Mixture Pumped (Slug Volume) (µL):</label>
+                        <input type="number" id="volumeReactantsSlugInput" value="500" min="1" title="Total volume of the formulated A+B+C_mixed solution that will be pumped during Step 1. This entire volume is intended to pass through the reactor.">
+                    </div>
+                    <div class="input-group">
+                        <label for="coeffDiffusion">Diffusion Coefficient (Cd):</label>
+                        <input type="number" id="coeffDiffusion" value="0.1" min="0" step="0.01" title="Fraction of 'Total Reactant Mixture Pumped (Slug Volume)' to collect as shoulders for diffusion. Cd ≥ 0. Collection Volume = (1 + 2*Cd) * SlugVolume.">
+                    </div>
+                     <div class="input-group">
+                        <label for="postCollectionFlushTime">Post-Collection Flush Time (min):</label>
+                        <input type="number" id="postCollectionFlushTime" value="5" min="0" step="any" title="Duration to flush the system with Solvent C after collection. This is added to Step 2.">
+                    </div>
+                    <div class="input-group">
+                        <label for="maxVolumeA">Max Syringe Volume Pump A (µL):</label>
+                        <input type="number" id="maxVolumeA" value="10000" min="1"> 
+                    </div>
+                    <div class="input-group">
+                        <label for="maxVolumeB">Max Syringe Volume Pump B (µL):</label>
+                        <input type="number" id="maxVolumeB" value="10000" min="1"> 
+                    </div>
+                    <div class="input-group">
+                        <label for="refillPauseDuration">Refill Pause Duration (min):</label>
+                        <input type="number" id="refillPauseDuration" value="1440" min="0"> 
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h2><i class="fas fa-tint"></i> Pump Assignments</h2>
+                    </div>
+                    <div class="input-group">
+                        <label for="pumpA">Pump for Sample A:</label>
+                        <select id="pumpA">
+                            <option value="PS1">PS1</option> <option value="PS2">PS2</option> <option value="PS3" selected>PS3</option> <option value="PS4">PS4</option> <option value="Kn1">Kn1</option> <option value="Kn2">Kn2</option> <option value="Kn3">Kn3</option>
+                        </select>
+                    </div>
+                    <div class="input-group">
+                        <label for="pumpB">Pump for Sample B:</label>
+                        <select id="pumpB">
+                            <option value="PS1">PS1</option> <option value="PS2">PS2</option> <option value="PS3">PS3</option> <option value="PS4" selected>PS4</option> <option value="Kn1">Kn1</option> <option value="Kn2">Kn2</option> <option value="Kn3">Kn3</option>
+                        </select>
+                    </div>
+                    <div class="input-group">
+                        <label for="pumpC">Pump for Solvent C (Push/Flush):</label>
+                        <select id="pumpC">
+                            <option value="PS1">PS1</option> <option value="PS2">PS2</option> <option value="PS3">PS3</option> <option value="PS4">PS4</option> <option value="Kn1" selected>Kn1</option> <option value="Kn2">Kn2</option> <option value="Kn3">Kn3</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <div class="card">
+                    <div class="card-header">
+                        <h2><i class="fas fa-sitemap"></i> Experiment Design Setup</h2>
+                    </div>
+                     <div class="input-group">
+                        <label for="designType">Experimental Design Type:</label>
+                        <select id="designType" title="Box-Behnken requires 3 varying factors; middle level is avg(min,max). Other designs may have specific factor requirements.">
+                            <option value="FullFactorial" selected>Full Factorial (2-level)</option>
+                            <option value="BoxBehnken">Box-Behnken (3-level, for 3 varying factors)</option>
+                            <option value="CentralComposite">Central Composite Design</option>
+                            <option value="CentralCompositeSimple">Central Composite (simple, alpha=1)</option>
+                        </select>
+                    </div>
+                    <div class="input-group">
+                        <label for="sortOrder">Sort Experiments by Temperature:</label>
+                        <select id="sortOrder" title="Choose the order of experiments based on temperature.">
+                            <option value="none">None (Default DOE Order)</option>
+                            <option value="increasing">Increasing Temperature</option>
+                            <option value="decreasing" selected>Decreasing Temperature</option>
+                        </select>
+                    </div>
+                    <div class="card-header" style="border-top: 1px solid var(--border-color); margin-top: 1.5rem; padding-top: 1.5rem; margin-bottom:1rem;">
+                        <h2 style="font-size: 1.1rem; color: var(--text-primary);"><i class="fas fa-ruler-combined"></i> Design Factor Levels (Min/Max)</h2>
+                    </div>
+                    <div class="input-group">
+                        <label for="minResidenceTime">Min Reactor Residence Time (min):</label>
+                        <input type="number" id="minResidenceTime" value="5" min="0.01" step="any">
+                    </div>
+                    <div class="input-group">
+                        <label for="maxResidenceTime">Max Reactor Residence Time (min):</label>
+                        <input type="number" id="maxResidenceTime" value="15" min="0.01" step="any">
+                    </div>
+                    <div class="input-group">
+                        <label for="minMolarRatioBA">Min Molar Ratio B/A:</label>
+                        <input type="number" id="minMolarRatioBA" value="0.5" min="0" step="any">
+                    </div>
+                    <div class="input-group">
+                        <label for="maxMolarRatioBA">Max Molar Ratio B/A:</label>
+                        <input type="number" id="maxMolarRatioBA" value="2" min="0" step="any">
+                    </div>
+                     <div class="input-group">
+                        <label for="minActiveFlowFraction">Min Active Flow Fraction (A+B):</label>
+                        <input type="number" id="minActiveFlowFraction" value="0.75" min="0" max="1" step="0.01" title="Portion of total flow for A+B when forming the reactant mixture. Remainder is Solvent C mixed into the mixture. E.g., 0.5 for 50% A+B, 1 for 100% A+B (no initial Solvent C).">
+                    </div>
+                    <div class="input-group">
+                        <label for="maxActiveFlowFraction">Max Active Flow Fraction (A+B):</label>
+                        <input type="number" id="maxActiveFlowFraction" value="1" min="0" max="1" step="0.01">
+                    </div>
+                    <div class="input-group">
+                        <label for="minTemperature">Min Temperature (°C):</label>
+                        <input type="number" id="minTemperature" value="25" step="any">
+                    </div>
+                    <div class="input-group">
+                        <label for="maxTemperature">Max Temperature (°C):</label>
+                        <input type="number" id="maxTemperature" value="80" step="any">
+                    </div>
+
+                    <div class="button-group">
+                        <button id="generateButton" onclick="calculateAndSave()"><i class="fas fa-calculator"></i> Generate Plan</button>
+                    </div>
+                    <div class="alert warning" id="warningMessage" style="display: none;"></div>
+                    <div id="refillSummaryDisplay" style="display: none;">
+                        <h3><i class="fas fa-syringe"></i> Refill Requirements Summary</h3>
+                        <p>Details will appear here after generating the plan.</p>
+                    </div>
+                    <a id="downloadLink" style="display: none;"><i class="fas fa-download"></i> Download JSON</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="results-section">
+            <div class="card">
+                <div class="card-header">
+                    <h2><i class="fas fa-file-code"></i> First Experiment Details (JSON Excerpt)</h2>
+                </div>
+                <div id="results"><pre>Click "Generate Plan" to see the output.</pre></div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <p id="creationDateTime">Microreactor Experiment Planner | Scherrmann Lab</p>
+    </footer>
+
+    <script defer>
+        function setVersionInfoInFooter() {
+            const footerElement = document.getElementById('creationDateTime');
+            if (footerElement) {
+                 const staticVersion = "20250606_094500"; // Timestamp of this script's creation
+                 footerElement.textContent = `Microreactor Experiment Planner | Scherrmann Lab | Version: ${staticVersion}`;
+            }
+        }
+        setVersionInfoInFooter(); // Call on script load
+
+        function getFormattedDateTimeForFileName() { 
+            const now = new Date();
+            return `${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}_${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}${now.getSeconds().toString().padStart(2, '0')}`;
+        }
+        
+        function formatDuration(totalMinutes) {
+            if (isNaN(totalMinutes) || totalMinutes < 0) totalMinutes = 0;
+            let mins = parseFloat(totalMinutes.toFixed(3)); 
+            const days = Math.floor(mins / 1440); mins %= 1440;
+            const hours = Math.floor(mins / 60); mins %= 60;
+            let formatted = "";
+            if (days > 0) formatted += `${days}d `;
+            if (hours > 0) formatted += `${hours}h `;
+            let minStr = mins.toFixed(3);
+            if (Math.abs(parseFloat(minStr)) < 1e-6 && Math.abs(parseFloat(minStr)) !==0) { minStr = parseFloat(minStr).toPrecision(1); }
+            else if (minStr.endsWith('.000')) { minStr = mins.toFixed(0); }
+            else if (minStr.endsWith('00')) { minStr = mins.toFixed(1); }
+            else if (minStr.endsWith('0')) { minStr = mins.toFixed(2); }
+            if (Math.abs(mins) > 1e-6 || formatted === "" || (days === 0 && hours === 0) ) { formatted += `${minStr}m`; }
+            return formatted.trim() || "0m";
+        }
+
+    function generateDesignPoints(factors, designType, allWarningsRef) {
+        let designPoints = [];
+        const varyingFactorsOnly = factors.filter(f => !f.isConstant);
+        const numVaryingFactors = varyingFactorsOnly.length;
+
+        if (designType === "BoxBehnken") {
+            if (numVaryingFactors !== 3) {
+                allWarningsRef.push("<strong>Design Note:</strong> Box-Behnken design is implemented for exactly 3 varying factors. Found " + numVaryingFactors + ". Defaulting to Full Factorial design.");
+                designType = "FullFactorial"; // Fallback
+            } else {
+                const bbdMatrixCoded = [
+                    [-1, -1,  0], [+1, -1,  0], [-1, +1,  0], [+1, +1,  0],
+                    [-1,  0, -1], [+1,  0, -1], [-1,  0, +1], [+1,  0, +1],
+                    [ 0, -1, -1], [ 0, +1, -1], [ 0, -1, +1], [ 0, +1, +1],
+                    [ 0,  0,  0]
+                ];
+                for (const codedRow of bbdMatrixCoded) {
+                    let point = {};
+                    let varyingFactorProcessedCount = 0;
+                    for (const factorDef of factors) {
+                        if (factorDef.isConstant) {
+                            point[factorDef.name] = factorDef.min;
+                        } else {
+                            const codedLevel = codedRow[varyingFactorProcessedCount];
+                            if (codedLevel === -1) point[factorDef.name] = factorDef.min;
+                            else if (codedLevel === 0) point[factorDef.name] = (factorDef.min + factorDef.max) / 2;
+                            else if (codedLevel === 1) point[factorDef.name] = factorDef.max;
+                            varyingFactorProcessedCount++;
+                        }
+                    }
+                    designPoints.push(point);
+                }
+                return designPoints;
+            }
+        }
+        
+        if (designType === "CentralComposite" || designType === "CentralCompositeSimple") {
+            if (numVaryingFactors < 2) {
+                 allWarningsRef.push("<strong>Design Note:</strong> Central Composite Design requires at least 2 varying factors. Found " + numVaryingFactors + ". Defaulting to Full Factorial design.");
+                 designType = "FullFactorial"; // Fallback
+            } else {
+                let codedPoints = [];
+                const k = numVaryingFactors;
+
+                // 1. Factorial Points (2^k)
+                const numFactorialPoints = Math.pow(2, k);
+                for (let i = 0; i < numFactorialPoints; i++) {
+                    let point = [];
+                    for (let j = 0; j < k; j++) {
+                        point.push(((i >> j) & 1) === 0 ? -1 : 1);
+                    }
+                    codedPoints.push(point);
+                }
+
+                // 2. Axial Points (2*k)
+                const alpha = (designType === "CentralCompositeSimple") ? 1 : Math.pow(numFactorialPoints, 0.25);
+                for (let i = 0; i < k; i++) {
+                    let pointPlus = Array(k).fill(0);
+                    let pointMinus = Array(k).fill(0);
+                    pointPlus[i] = alpha;
+                    pointMinus[i] = -alpha;
+                    codedPoints.push(pointPlus);
+                    codedPoints.push(pointMinus);
+                }
+
+                // 3. Center Point
+                codedPoints.push(Array(k).fill(0));
+
+                // Decode points
+                for (const codedRow of codedPoints) {
+                    let point = {};
+                    let varyingFactorIndex = 0;
+                    for (const factorDef of factors) {
+                        if (factorDef.isConstant) {
+                            point[factorDef.name] = factorDef.min;
+                        } else {
+                            const codedLevel = codedRow[varyingFactorIndex];
+                            const center = (factorDef.min + factorDef.max) / 2;
+                            const halfRange = (factorDef.max - factorDef.min) / 2;
+                            point[factorDef.name] = center + codedLevel * halfRange;
+                            varyingFactorIndex++;
+                        }
+                    }
+                    designPoints.push(point);
+                }
+                return designPoints;
+            }
+        }
+
+        // Default logic: Full Factorial (handles any number of factors)
+        if (numVaryingFactors === 0) {
+            let point = {};
+            factors.forEach(f => point[f.name] = f.min);
+            designPoints.push(point);
+        } else {
+            const numExperiments = Math.pow(2, numVaryingFactors);
+            for (let i = 0; i < numExperiments; i++) {
+                let point = {};
+                let varyingFactorProcessedCount = 0;
+                for (const factor of factors) {
+                    if (factor.isConstant) {
+                        point[factor.name] = factor.min;
+                    } else {
+                        point[factor.name] = ((i >> varyingFactorProcessedCount) & 1) === 0 ? factor.min : factor.max;
+                        varyingFactorProcessedCount++;
+                    }
+                }
+                designPoints.push(point);
+            }
+        }
+        return designPoints;
+    }
+
+    function safeFormatNumeric(value, precision = 2) {
+        const numValue = Number(value);
+        if (typeof value === 'undefined' || value === null || isNaN(numValue)) {
+            return null; 
+        }
+        return parseFloat(numValue.toFixed(precision));
+    }
+
+    async function calculateAndSave() {
+        const generateButton = document.getElementById('generateButton');
+        const originalButtonContent = generateButton.innerHTML;
+        generateButton.innerHTML = `<i class="fas fa-spinner fa-spin"></i> CALCULATING...`;
+        generateButton.disabled = true;
+        await new Promise(resolve => setTimeout(resolve, 50));
+
+        // Reading parameters
+        const VR_uL = parseFloat(document.getElementById('reactorVolume').value);
+        const mM_A = parseFloat(document.getElementById('concA').value);
+        const mM_B = parseFloat(document.getElementById('concB').value);
+        const V1_uL = parseFloat(document.getElementById('deadVolume1').value);
+        const V2_uL = parseFloat(document.getElementById('deadVolume2').value);
+        const collectVolumePerFraction_uL = parseFloat(document.getElementById('collectVolumePerFraction').value);
+        const V_slug_input_uL = parseFloat(document.getElementById('volumeReactantsSlugInput').value); 
+        const C_diff_from_UI = parseFloat(document.getElementById('coeffDiffusion').value);
+        const postCollectionFlushTime_min_input = parseFloat(document.getElementById('postCollectionFlushTime').value);
+        const maxVolumeA_uL = parseFloat(document.getElementById('maxVolumeA').value);
+        const maxVolumeB_uL = parseFloat(document.getElementById('maxVolumeB').value);
+        const refillPauseDurationCustom_min = parseFloat(document.getElementById('refillPauseDuration').value);
+        
+        let selectedDesignType = document.getElementById('designType').value;
+        const sortOrder = document.getElementById('sortOrder').value;
+
+        const pumpA_name = document.getElementById('pumpA').value;
+        const pumpB_name = document.getElementById('pumpB').value;
+        const pumpC_for_json = document.getElementById('pumpC').value;
+
+        const minRT = parseFloat(document.getElementById('minResidenceTime').value);
+        const maxRT = parseFloat(document.getElementById('maxResidenceTime').value);
+        const minRatioBA = parseFloat(document.getElementById('minMolarRatioBA').value);
+        const maxRatioBA = parseFloat(document.getElementById('maxMolarRatioBA').value);
+        const minAFF = parseFloat(document.getElementById('minActiveFlowFraction').value);
+        const maxAFF = parseFloat(document.getElementById('maxActiveFlowFraction').value);
+        const minTemp = parseFloat(document.getElementById('minTemperature').value);
+        const maxTemp = parseFloat(document.getElementById('maxTemperature').value);
+
+        const warningMessageElement = document.getElementById('warningMessage');
+        const refillSummaryDiv = document.getElementById('refillSummaryDisplay');
+        const downloadLink = document.getElementById('downloadLink');
+        const resultsDiv = document.getElementById('results');
+        const resultsContainer = document.querySelector('.results-section');
+
+        warningMessageElement.innerHTML = ''; warningMessageElement.style.display = 'none';
+        refillSummaryDiv.style.display = 'none'; refillSummaryDiv.innerHTML = `<h3><i class="fas fa-syringe"></i> Refill Requirements Summary</h3><p>Details will appear here after generating the plan.</p>`;
+        downloadLink.style.display = 'none'; resultsDiv.innerHTML = `<pre>Click "Generate Plan" to see the output.</pre>`;
+
+        let allWarnings = []; let canGenerateJson = true;
+
+        if (isNaN(VR_uL) || isNaN(mM_A) || isNaN(mM_B) || isNaN(V1_uL) || isNaN(V2_uL) || isNaN(collectVolumePerFraction_uL) ||
+            isNaN(V_slug_input_uL) || isNaN(C_diff_from_UI) || isNaN(postCollectionFlushTime_min_input) || 
+            isNaN(maxVolumeA_uL) || isNaN(maxVolumeB_uL) || isNaN(refillPauseDurationCustom_min) || 
+            isNaN(minRT) || isNaN(maxRT) || isNaN(minRatioBA) || isNaN(maxRatioBA) || isNaN(minAFF) || isNaN(maxAFF) ||
+            isNaN(minTemp) || isNaN(maxTemp)) {
+            allWarnings.push("<strong>Input Error:</strong> Ensure all input fields have valid numbers."); canGenerateJson = false;
+        }
+        if (minTemp > maxTemp) { allWarnings.push("<strong>Input Error:</strong> Min Temperature cannot be greater than Max Temperature."); canGenerateJson = false; }
+        // Add other validations...
+        if (VR_uL <= 0 || collectVolumePerFraction_uL <=0 || V_slug_input_uL <= 0) { allWarnings.push("<strong>Input Error:</strong> Reactor Volume, Collection Volume/Fraction, and Total Reactant Mixture Pumped must be positive."); canGenerateJson = false; }
+        if (mM_A < 0 || mM_B < 0) { allWarnings.push("<strong>Input Error:</strong> Concentrations (mM) must be non-negative."); canGenerateJson = false; }
+        if (V1_uL < 0 || V2_uL < 0) { allWarnings.push("<strong>Input Error:</strong> Dead Volumes (µL) must be non-negative."); canGenerateJson = false; }
+        if (maxVolumeA_uL <= 0 || maxVolumeB_uL <= 0) { allWarnings.push("<strong>Input Error:</strong> Max Syringe Volumes (µL) must be positive."); canGenerateJson = false; }
+        if (refillPauseDurationCustom_min < 0) { allWarnings.push("<strong>Input Error:</strong> Refill Pause Duration (min) must be non-negative."); canGenerateJson = false; }
+        if (C_diff_from_UI < 0) { allWarnings.push("<strong>Input Error:</strong> Diffusion Coefficient (Cd) must be non-negative."); canGenerateJson = false; }
+        if (postCollectionFlushTime_min_input < 0) { allWarnings.push("<strong>Input Error:</strong> Post-Collection Flush Time must be a non-negative number."); canGenerateJson = false; }
+        if (C_diff_from_UI > 1) { allWarnings.push(`<strong>Warning:</strong> Diffusion Coefficient (Cd = ${C_diff_from_UI.toFixed(2)}) > 1. This means collecting diffusion shoulders larger than the 'Total Reactant Mixture Pumped (Slug Volume)'. Ensure this is intended.`); }
+        if (minRT <=0 || maxRT <=0 || minRT > maxRT) { allWarnings.push("<strong>Input Error:</strong> Residence Times (min) must be positive and Min RT ≤ Max RT."); canGenerateJson = false; }
+        if (minRatioBA < 0 || maxRatioBA < 0 || minRatioBA > maxRatioBA) { allWarnings.push("<strong>Input Error:</strong> Molar Ratios B/A must be non-negative and Min Ratio ≤ Max Ratio."); canGenerateJson = false; }
+        if (minAFF < 0 || minAFF > 1 || maxAFF < 0 || maxAFF > 1 || minAFF > maxAFF) { allWarnings.push("<strong>Input Error:</strong> Active Flow Fractions must be between 0-1 and Min AFF ≤ Max AFF."); canGenerateJson = false; }
+
+        if (!canGenerateJson) {
+            warningMessageElement.innerHTML = allWarnings.join('<br>'); warningMessageElement.className = 'alert critical-error'; warningMessageElement.style.display = 'block';
+            resultsDiv.innerHTML = `<pre>Please correct input errors before generating the plan.</pre>`; resultsContainer.style.display = 'block';
+            generateButton.innerHTML = originalButtonContent; generateButton.disabled = false; return;
+        }
+
+        const assignedPumps = [pumpA_name, pumpB_name, pumpC_for_json];
+        if (new Set(assignedPumps).size < assignedPumps.length) { allWarnings.push("<strong>Pump Assignment Note:</strong> Duplicate pump assignments detected. Ensure this is intended."); }
+
+        let factorDefinitions = [
+            { name: 'RT', min: minRT, max: maxRT, isConstant: Math.abs(minRT - maxRT) < 1e-9 },
+            { name: 'RatioBA', min: minRatioBA, max: maxRatioBA, isConstant: Math.abs(minRatioBA - maxRatioBA) < 1e-9 },
+            { name: 'AFF', min: minAFF, max: maxAFF, isConstant: Math.abs(minAFF - maxAFF) < 1e-9 },
+            { name: 'Temp', min: minTemp, max: maxTemp, isConstant: Math.abs(minTemp - maxTemp) < 1e-9 }
+        ];
+        
+        const originalSelectedDesignType = selectedDesignType;
+        const designPoints = generateDesignPoints(factorDefinitions, selectedDesignType, allWarnings);
+        
+        if (sortOrder === 'increasing') {
+            designPoints.sort((a, b) => a.Temp - b.Temp);
+            allWarnings.push("<strong>Sorting Note:</strong> Experiments have been reordered by increasing temperature.");
+        } else if (sortOrder === 'decreasing') {
+            designPoints.sort((a, b) => b.Temp - a.Temp);
+            allWarnings.push("<strong>Sorting Note:</strong> Experiments have been reordered by decreasing temperature.");
+        }
+
+        const experimentPlan = [];
+        let nextAvailableTubeNumber = 1;
+        let syringe_A_remaining_uL = maxVolumeA_uL;
+        let syringe_B_remaining_uL = maxVolumeB_uL;
+        let totalRefillsA = 0; let totalRefillsB = 0; let totalRefillPauses = 0;
+        let totalReagentA_used_uL = 0; let totalReagentB_used_uL = 0; 
+        let totalSolventC_mixed_in_slug_uL = 0; let totalSolventC_push_flush_uL = 0;
+
+        const allPumpNames = ["PS1", "PS2", "PS3", "PS4", "Kn1", "Kn2", "Kn3"];
+        let cumulative_time_elapsed_overall_min = 0;
+        let experimentCounter = 0;
+
+        for (const point of designPoints) {
+            experimentCounter++;
+            let currentExpWarnings = [];
+            let current_exp_time_accumulator_for_this_exp_steps = 0;
+
+            const RT_current_min = point.RT;
+            const molarRatioBA_current = point.RatioBA;
+            const AFF_current = point.AFF;
+            const temp_current_celsius = point.Temp;
+
+            if (typeof RT_current_min === 'undefined' || RT_current_min === null || isNaN(Number(RT_current_min)) ||
+                typeof molarRatioBA_current === 'undefined' || molarRatioBA_current === null || isNaN(Number(molarRatioBA_current)) ||
+                typeof AFF_current === 'undefined' || AFF_current === null || isNaN(Number(AFF_current)) ||
+                typeof temp_current_celsius === 'undefined' || temp_current_celsius === null || isNaN(Number(temp_current_celsius))) {
+                allWarnings.push(`<strong>CRITICAL Data Error (Exp ${experimentCounter}):</strong> A factor value was invalid or undefined. Skipping experiment.`);
+                canGenerateJson = false; 
+                break; 
+            }
+
+            const Q_total_uL_min = (VR_uL > 0 && RT_current_min > 0) ? VR_uL / RT_current_min : 0;
+            if (Q_total_uL_min <= 1e-9) {
+                currentExpWarnings.push(`<strong>Warning (Exp ${experimentCounter}):</strong> Total flow rate (VR/RT) is ~0 µL/min for RT=${RT_current_min.toFixed(2)}. Skipping.`);
+                if (!allWarnings.some(w => currentExpWarnings.includes(w))) allWarnings.push(...currentExpWarnings);
+                continue;
+            }
+
+            const flow_active_AB_uL_min = Q_total_uL_min * AFF_current;
+            const flow_C_mixed_in_slug_uL_min = Q_total_uL_min * (1 - AFF_current);
+            
+            let flowA_uL_min, flowB_uL_min;
+            if (flow_active_AB_uL_min < 1e-9) { flowA_uL_min = 0; flowB_uL_min = 0; }
+            else if (mM_A < 1e-9 && mM_B < 1e-9) { 
+                flowA_uL_min = flow_active_AB_uL_min / 2; flowB_uL_min = flow_active_AB_uL_min / 2;
+            } else if (mM_B < 1e-9 || molarRatioBA_current > 1e9) { 
+                flowA_uL_min = flow_active_AB_uL_min; flowB_uL_min = 0;
+            } else if (mM_A < 1e-9) { 
+                flowA_uL_min = 0; flowB_uL_min = flow_active_AB_uL_min;
+            } else { 
+                const denominator = (1 + molarRatioBA_current * (mM_A / mM_B));
+                if (Math.abs(denominator) < 1e-9) { 
+                    currentExpWarnings.push(`<strong>Warning (Exp ${experimentCounter}):</strong> Zero denominator in molar ratio calc. Skipping.`); 
+                    if(!allWarnings.includes(currentExpWarnings.slice(-1)[0])) allWarnings.push(currentExpWarnings.slice(-1)[0]); 
+                    continue; 
+                }
+                flowA_uL_min = flow_active_AB_uL_min / denominator;
+                flowB_uL_min = flow_active_AB_uL_min - flowA_uL_min;
+            }
+            flowA_uL_min = Math.max(0, flowA_uL_min); flowB_uL_min = Math.max(0, flowB_uL_min);
+
+            const t_step1_form_slug_duration_min = (Q_total_uL_min > 1e-9) ? V_slug_input_uL / Q_total_uL_min : 0;
+            const volA_consumed_in_step1 = flowA_uL_min * t_step1_form_slug_duration_min;
+            const volB_consumed_in_step1 = flowB_uL_min * t_step1_form_slug_duration_min;
+            const volC_mixed_consumed_in_step1 = flow_C_mixed_in_slug_uL_min * t_step1_form_slug_duration_min;
+            
+            const V_slug_for_reaction_and_collection_uL = V_slug_input_uL; 
+
+            let V_slug_portion_in_V1_after_step1 = 0;
+            let V_slug_portion_entering_VR_during_step1 = 0;
+
+            if (V_slug_for_reaction_and_collection_uL > 1e-9) {
+                if (V1_uL > 0) {
+                    V_slug_portion_in_V1_after_step1 = Math.min(V_slug_for_reaction_and_collection_uL, V1_uL);
+                    V_slug_portion_entering_VR_during_step1 = Math.max(0, V_slug_for_reaction_and_collection_uL - V1_uL);
+                } else { 
+                    V_slug_portion_in_V1_after_step1 = 0;
+                    V_slug_portion_entering_VR_during_step1 = V_slug_for_reaction_and_collection_uL;
+                }
+            }
+
+            if (V_slug_for_reaction_and_collection_uL < V1_uL && V1_uL > 0) {
+                currentExpWarnings.push(`<strong>Warning (Exp ${experimentCounter}):</strong> Input Slug Volume (${V_slug_for_reaction_and_collection_uL.toFixed(1)} µL) is less than V1 (${V1_uL.toFixed(1)} µL). Entire slug will be within V1 after Step 1.`);
+            }
+            if (VR_uL < V_slug_portion_entering_VR_during_step1) {
+                 currentExpWarnings.push(`<strong>Warning (Exp ${experimentCounter}):</strong> Reactor Volume (${VR_uL.toFixed(1)} µL) is smaller than the portion of the slug initially entering it (${V_slug_portion_entering_VR_during_step1.toFixed(1)} µL) during Step 1. Some slug may pass VR before Step 2 begins the main RT phase.`);
+            }
+            if (VR_uL < V_slug_for_reaction_and_collection_uL) {
+                currentExpWarnings.push(`<strong>Note (Exp ${experimentCounter}):</strong> Reactor Volume (${VR_uL.toFixed(1)} µL) is smaller than the full Input Slug Volume (${V_slug_for_reaction_and_collection_uL.toFixed(1)} µL). Entire slug cannot be contained in VR at once. RT applies to VR-sized portions of the slug as it transits.`);
+            }
+
+            if (flowA_uL_min > 1e-9 && volA_consumed_in_step1 > maxVolumeA_uL && syringe_A_remaining_uL < volA_consumed_in_step1) { allWarnings.push(`<strong>CRITICAL (Exp ${experimentCounter}):</strong> Vol A for Step 1 (${volA_consumed_in_step1.toFixed(1)}µL) > max syringe (${maxVolumeA_uL}µL).`); canGenerateJson = false; }
+            if (flowB_uL_min > 1e-9 && volB_consumed_in_step1 > maxVolumeB_uL && syringe_B_remaining_uL < volB_consumed_in_step1) { allWarnings.push(`<strong>CRITICAL (Exp ${experimentCounter}):</strong> Vol B for Step 1 (${volB_consumed_in_step1.toFixed(1)}µL) > max syringe (${maxVolumeB_uL}µL).`); canGenerateJson = false; }
+            if (!canGenerateJson) break;
+
+            let experiment_steps = [];
+            let step_counter = 1;
+            let refills_for_current_exp_A = 0;
+            let refills_for_current_exp_B = 0;
+            let time_offset_for_refill_pause_this_exp = 0;
+            
+            let pumpA_needs_refill = (flowA_uL_min > 1e-9 && volA_consumed_in_step1 > syringe_A_remaining_uL);
+            let pumpB_needs_refill = (flowB_uL_min > 1e-9 && volB_consumed_in_step1 > syringe_B_remaining_uL);
+
+            if (pumpA_needs_refill) refills_for_current_exp_A = Math.ceil(Math.max(0, volA_consumed_in_step1 - syringe_A_remaining_uL) / maxVolumeA_uL);
+            if (pumpB_needs_refill) refills_for_current_exp_B = Math.ceil(Math.max(0, volB_consumed_in_step1 - syringe_B_remaining_uL) / maxVolumeB_uL);
+            
+            if (refills_for_current_exp_A > 0) totalRefillsA += refills_for_current_exp_A;
+            if (refills_for_current_exp_B > 0) totalRefillsB += refills_for_current_exp_B;
+
+             if ((pumpA_needs_refill && refills_for_current_exp_A > 0) || (pumpB_needs_refill && refills_for_current_exp_B > 0)) {
+                 if (refillPauseDurationCustom_min > 1e-9) { 
+                    totalRefillPauses++; 
+                    time_offset_for_refill_pause_this_exp = refillPauseDurationCustom_min;
+                    let refill_message_parts = [];
+                    if (pumpA_needs_refill && refills_for_current_exp_A > 0) refill_message_parts.push(`${pumpA_name} (${refills_for_current_exp_A}x)`);
+                    if (pumpB_needs_refill && refills_for_current_exp_B > 0) refill_message_parts.push(`${pumpB_name} (${refills_for_current_exp_B}x)`);
+                    currentExpWarnings.push(`<strong>Refill Alert (Exp ${experimentCounter}):</strong> Pumps ${refill_message_parts.join(' & ')} require refill. Pause of ${formatDuration(refillPauseDurationCustom_min)} inserted.`);
+                    experiment_steps.push({
+                        index_of_step: step_counter++, description: "Refill Pause",
+                        step_explanation: `Pause for ${formatDuration(refillPauseDurationCustom_min)} to manually refill syringes. ${pumpA_name} needs ${refills_for_current_exp_A} refill(s), ${pumpB_name} needs ${refills_for_current_exp_B} refill(s).`,
+                        step_start_time_min: parseFloat(current_exp_time_accumulator_for_this_exp_steps.toFixed(3)),
+                        duration_of_step_min: parseFloat(refillPauseDurationCustom_min.toFixed(3)),
+                        step_end_time_min: parseFloat((current_exp_time_accumulator_for_this_exp_steps + refillPauseDurationCustom_min).toFixed(3)),
+                        pump_flows_uL_min: createPumpFlows(0,0,0) 
+                    });
+                    current_exp_time_accumulator_for_this_exp_steps += refillPauseDurationCustom_min;
+                } else { currentExpWarnings.push(`<strong>Refill Note (Exp ${experimentCounter}):</strong> Pump(s) require refill, Refill Pause is 0 min. Assuming instant refill.`); }
+                if (pumpA_needs_refill) syringe_A_remaining_uL = maxVolumeA_uL * refills_for_current_exp_A + (syringe_A_remaining_uL % maxVolumeA_uL) ;
+                if (pumpB_needs_refill) syringe_B_remaining_uL = maxVolumeB_uL * refills_for_current_exp_B + (syringe_B_remaining_uL % maxVolumeB_uL) ;
+            }
+            
+            if (flowA_uL_min > 1e-9) syringe_A_remaining_uL -= volA_consumed_in_step1;
+            if (flowB_uL_min > 1e-9) syringe_B_remaining_uL -= volB_consumed_in_step1;
+            totalReagentA_used_uL += volA_consumed_in_step1;
+            totalReagentB_used_uL += volB_consumed_in_step1;
+            totalSolventC_mixed_in_slug_uL += volC_mixed_consumed_in_step1;
+            
+            function createPumpFlows(flowA, flowB, flowC_val, currentPumpCName = pumpC_for_json, isPushOrFlushStep = false) {
+                const flows = {};
+                allPumpNames.forEach(pump => { flows[pump] = 0.0; });
+                if (isPushOrFlushStep) { 
+                    if (currentPumpCName && parseFloat(flowC_val) > 1e-9) flows[currentPumpCName] = parseFloat(parseFloat(flowC_val).toFixed(2));
+                } else { 
+                    if (pumpA_name && parseFloat(flowA) > 1e-9) flows[pumpA_name] = parseFloat(parseFloat(flowA).toFixed(2));
+                    if (pumpB_name && parseFloat(flowB) > 1e-9) flows[pumpB_name] = parseFloat(parseFloat(flowB).toFixed(2));
+                    if (pumpC_for_json && parseFloat(flowC_val) > 1e-9) flows[pumpC_for_json] = parseFloat(parseFloat(flowC_val).toFixed(2));
+                }
+                return flows;
+            }
+            
+            experiment_steps.push({
+                index_of_step: step_counter++,
+                description: "Step 1: Form Reactant Slug",
+                step_explanation: `Pump a total of ${V_slug_for_reaction_and_collection_uL.toFixed(1)} µL of reactant mixture (A+B+C_mixed) at ${Q_total_uL_min.toFixed(2)} µL/min. Total Step 1 duration: ${formatDuration(t_step1_form_slug_duration_min)}.
+- At completion: Approx. ${V_slug_portion_in_V1_after_step1.toFixed(1)} µL of mixture (trailing part of slug) is in V1.
+- Approx. ${V_slug_portion_entering_VR_during_step1.toFixed(1)} µL of mixture (leading part of slug) has entered VR.`,
+                step_start_time_min: parseFloat(current_exp_time_accumulator_for_this_exp_steps.toFixed(3)),
+                duration_of_step_min: parseFloat(t_step1_form_slug_duration_min.toFixed(3)),
+                step_end_time_min: parseFloat((current_exp_time_accumulator_for_this_exp_steps + t_step1_form_slug_duration_min).toFixed(3)),
+                pump_flows_uL_min: createPumpFlows(flowA_uL_min, flowB_uL_min, flow_C_mixed_in_slug_uL_min, pumpC_for_json, false)
+            });
+            current_exp_time_accumulator_for_this_exp_steps += t_step1_form_slug_duration_min;
+
+            const V_collectable_target_uL = (V_slug_for_reaction_and_collection_uL > 1e-9) ? V_slug_for_reaction_and_collection_uL * (1 + 2 * C_diff_from_UI) : 0;
+            const num_fractions_to_collect_val = (collectVolumePerFraction_uL > 1e-9 && V_collectable_target_uL > 0.001) ? Math.ceil(V_collectable_target_uL / collectVolumePerFraction_uL) : 0;
+            const total_collection_volume_for_fractions_uL = num_fractions_to_collect_val * collectVolumePerFraction_uL;
+            const t_collection_actual_duration_min = (Q_total_uL_min > 0 && total_collection_volume_for_fractions_uL > 0.001) ? total_collection_volume_for_fractions_uL / Q_total_uL_min : 0;
+
+            const t_push_V1_content_into_VR_min = (Q_total_uL_min > 1e-9 && V_slug_portion_in_V1_after_step1 > 1e-9) ? V_slug_portion_in_V1_after_step1 / Q_total_uL_min : 0;
+            const t_reaction_transit_min = RT_current_min; 
+            const t_V2_transit_min = (Q_total_uL_min > 1e-9 && V2_uL > 0) ? V2_uL / Q_total_uL_min : 0;
+            
+            let t_step2_base_duration_min = t_push_V1_content_into_VR_min + t_reaction_transit_min + t_V2_transit_min + t_collection_actual_duration_min;
+            let flush_explanation_part = "";
+            let vol_C_for_post_collection_flush = 0;
+
+            if (postCollectionFlushTime_min_input > 1e-9) {
+                t_step2_base_duration_min += postCollectionFlushTime_min_input;
+                vol_C_for_post_collection_flush = Q_total_uL_min * postCollectionFlushTime_min_input;
+                flush_explanation_part = `\n5. Final System Flush: System flushed with Solvent C for an additional ${formatDuration(postCollectionFlushTime_min_input)} (Volume: ${vol_C_for_post_collection_flush.toFixed(1)} µL).`;
+            }
+            
+            const t_step2_final_duration_min = t_step2_base_duration_min;
+            const vol_C_push_needed_for_step2 = Q_total_uL_min * t_step2_final_duration_min;
+            totalSolventC_push_flush_uL += vol_C_push_needed_for_step2;
+            
+            const t_slug_front_at_collector_relative_to_step2_start_min = t_push_V1_content_into_VR_min + t_reaction_transit_min + t_V2_transit_min;
+            const t_leading_shoulder_duration_min = (Q_total_uL_min > 1e-9 && C_diff_from_UI > 0 && V_slug_for_reaction_and_collection_uL > 1e-9) ? (C_diff_from_UI * V_slug_for_reaction_and_collection_uL) / Q_total_uL_min : 0;
+            
+            const t_collection_starts_in_step2_relative_min = Math.max(0, t_slug_front_at_collector_relative_to_step2_start_min - t_leading_shoulder_duration_min);
+            const t_collection_ends_in_step2_relative_min = t_collection_starts_in_step2_relative_min + t_collection_actual_duration_min;
+            const first_tube_for_this_exp = nextAvailableTubeNumber;
+
+            experiment_steps.push({
+                index_of_step: step_counter++,
+                description: "Step 2: Push Slug with Solvent C, React, Collect, Flush",
+                step_explanation: `Pure Solvent C (${pumpC_for_json}) pushes at ${Q_total_uL_min.toFixed(2)} µL/min.
+1. Push V1 content into VR: ${V_slug_portion_in_V1_after_step1.toFixed(1)} µL of reactant mixture is pushed from V1 into VR (duration: ${formatDuration(t_push_V1_content_into_VR_min)}). The full ${V_slug_for_reaction_and_collection_uL.toFixed(1)} µL slug is now effectively loaded for reactor transit.
+2. Full Slug Transit VR: The ${V_slug_for_reaction_and_collection_uL.toFixed(1)} µL slug transits VR (${VR_uL.toFixed(1)} µL). Effective residence time for the slug: ${formatDuration(t_reaction_transit_min)}.
+3. Slug Transit V2: Slug front moves through V2 (${V2_uL.toFixed(1)} µL), duration: ${formatDuration(t_V2_transit_min)}.
+4. Collection: Collect ${num_fractions_to_collect_val} fraction(s) (${total_collection_volume_for_fractions_uL.toFixed(1)} µL total), duration: ${formatDuration(t_collection_actual_duration_min)}. First tube: ${first_tube_for_this_exp}.
+   Expected collection at outlet: ~${formatDuration(t_collection_starts_in_step2_relative_min)} to ~${formatDuration(t_collection_ends_in_step2_relative_min)} (relative to start of this Step 2).${flush_explanation_part}
+Total Step 2 duration: ${formatDuration(t_step2_final_duration_min)}.`,
+                step_start_time_min: parseFloat(current_exp_time_accumulator_for_this_exp_steps.toFixed(3)),
+                duration_of_step_min: parseFloat(t_step2_final_duration_min.toFixed(3)),
+                step_end_time_min: parseFloat((current_exp_time_accumulator_for_this_exp_steps + t_step2_final_duration_min).toFixed(3)),
+                pump_flows_uL_min: createPumpFlows(0, 0, Q_total_uL_min, pumpC_for_json, true) 
+            });
+            current_exp_time_accumulator_for_this_exp_steps += t_step2_final_duration_min;
+            
+            const start_collect_min_from_exp_start_val_numeric =
+                time_offset_for_refill_pause_this_exp +
+                t_step1_form_slug_duration_min + 
+                t_collection_starts_in_step2_relative_min; 
+
+            let concA_in_formulated_mix_mM = (Q_total_uL_min > 1e-9 && AFF_current > 1e-9 && (flowA_uL_min + flowB_uL_min + flow_C_mixed_in_slug_uL_min) > 1e-9) ? (flowA_uL_min * mM_A / (flowA_uL_min + flowB_uL_min + flow_C_mixed_in_slug_uL_min)) : 0;
+            let concB_in_formulated_mix_mM = (Q_total_uL_min > 1e-9 && AFF_current > 1e-9 && (flowA_uL_min + flowB_uL_min + flow_C_mixed_in_slug_uL_min) > 1e-9) ? (flowB_uL_min * mM_B / (flowA_uL_min + flowB_uL_min + flow_C_mixed_in_slug_uL_min)) : 0;
+            if (AFF_current < 1e-9) { concA_in_formulated_mix_mM = 0; concB_in_formulated_mix_mM = 0;}
+
+            let actual_molar_ratio_BA_in_formulated_mix;
+            if (AFF_current < 1e-9) { actual_molar_ratio_BA_in_formulated_mix = "N/A (No active A/B)";}
+            else if (concA_in_formulated_mix_mM > 1e-9) { actual_molar_ratio_BA_in_formulated_mix = concB_in_formulated_mix_mM / concA_in_formulated_mix_mM; }
+            else if (concB_in_formulated_mix_mM > 1e-9 && concA_in_formulated_mix_mM <= 1e-9) { actual_molar_ratio_BA_in_formulated_mix = "Infinity (Conc A in mix ~0)"; }
+            else { actual_molar_ratio_BA_in_formulated_mix = "N/A (Both A&B concs in mix ~0)"; }
+            
+            let jsonDesignLabel = originalSelectedDesignType;
+            if (originalSelectedDesignType === 'CentralCompositeSimple') {
+                jsonDesignLabel = 'CentralComposite simple';
+            }
+
+            // **** MODIFICATION START: JSON structure changed here ****
+            experimentPlan.push({
+                experiment_name: `Experiment ${experimentCounter} (${originalSelectedDesignType}: RT ${RT_current_min.toFixed(1)}m, B/A ${molarRatioBA_current.toFixed(2)}, AFF ${AFF_current.toFixed(2)}, T ${temp_current_celsius.toFixed(1)}C)`,
+                input_parameters: { 
+                    design_type_selected: jsonDesignLabel,
+                    reactor_volume_uL: safeFormatNumeric(VR_uL, 1),
+                    concentrations_mM: { A: safeFormatNumeric(mM_A,1), B: safeFormatNumeric(mM_B,1) },
+                    dead_volumes_uL: { V1: safeFormatNumeric(V1_uL,1), V2: safeFormatNumeric(V2_uL,1) },
+                    collect_volume_per_fraction_uL: safeFormatNumeric(collectVolumePerFraction_uL,1),
+                    slug_volume_input_uL: safeFormatNumeric(V_slug_input_uL,1), 
+                    coeff_diffusion_Cd_input: safeFormatNumeric(C_diff_from_UI,2),
+                    post_collection_flush_time_min_input: safeFormatNumeric(postCollectionFlushTime_min_input,2),
+                    max_syringe_volumes_uL: { A: safeFormatNumeric(maxVolumeA_uL,1), B: safeFormatNumeric(maxVolumeB_uL,1) },
+                    reactor_residence_time_min_input: safeFormatNumeric(minRT,2), reactor_residence_time_max_input: safeFormatNumeric(maxRT,2),
+                    molar_ratio_BA_min_input: safeFormatNumeric(minRatioBA,2), molar_ratio_BA_max_input: safeFormatNumeric(maxRatioBA,2),
+                    active_flow_fraction_min_input: safeFormatNumeric(minAFF,2), active_flow_fraction_max_input: safeFormatNumeric(maxAFF,2),
+                    temperature_min_input_celsius: safeFormatNumeric(minTemp, 2),
+                    temperature_max_input_celsius: safeFormatNumeric(maxTemp, 2),
+                },
+                pump_assignments: { pump_A: pumpA_name, pump_B: pumpB_name, pump_C_solvent: pumpC_for_json },
+                calculated_parameters: { 
+                    target_residence_time_setting_min: safeFormatNumeric(RT_current_min, 2), 
+                    target_molar_ratio_BA_setting: safeFormatNumeric(molarRatioBA_current, 2),
+                    target_active_flow_fraction_setting: safeFormatNumeric(AFF_current, 2),
+                    // target_temperature_celsius moved
+                    total_flow_rate_in_reactor_uL_min: safeFormatNumeric(Q_total_uL_min,2),
+                    flow_rate_A_uL_min: safeFormatNumeric(flowA_uL_min,2),
+                    flow_rate_B_uL_min: safeFormatNumeric(flowB_uL_min,2),
+                    flow_rate_C_mixed_in_slug_uL_min: safeFormatNumeric(flow_C_mixed_in_slug_uL_min,2),
+                    slug_volume_for_reaction_uL: safeFormatNumeric(V_slug_for_reaction_and_collection_uL,1), 
+                    actual_conc_A_in_formulated_mixture_mM: safeFormatNumeric(concA_in_formulated_mix_mM,3),
+                    actual_conc_B_in_formulated_mixture_mM: safeFormatNumeric(concB_in_formulated_mix_mM,3),
+                    actual_molar_ratio_BA_in_formulated_mixture: (typeof actual_molar_ratio_BA_in_formulated_mix === 'string') ? actual_molar_ratio_BA_in_formulated_mix : safeFormatNumeric(actual_molar_ratio_BA_in_formulated_mix,3),
+                    volume_A_pumped_in_step1_uL: safeFormatNumeric(volA_consumed_in_step1,1),
+                    volume_B_pumped_in_step1_uL: safeFormatNumeric(volB_consumed_in_step1,1),
+                    volume_C_mixed_pumped_in_step1_uL: safeFormatNumeric(volC_mixed_consumed_in_step1,1),
+                    volume_C_push_collect_flush_step2_uL: safeFormatNumeric(vol_C_push_needed_for_step2,1),
+                    collection_target_volume_uL: safeFormatNumeric(V_collectable_target_uL,1),
+                    num_fractions_to_collect: num_fractions_to_collect_val,
+                    time_per_fraction_min: safeFormatNumeric((Q_total_uL_min > 0 && collectVolumePerFraction_uL > 0) ? (collectVolumePerFraction_uL / Q_total_uL_min) : 0, 3),
+                    total_experiment_duration_min: safeFormatNumeric(current_exp_time_accumulator_for_this_exp_steps,2),
+                    refills_needed_for_this_experiment: refills_for_current_exp_A + refills_for_current_exp_B,
+                    syringe_A_remaining_after_exp_uL: safeFormatNumeric(syringe_A_remaining_uL,1),
+                    syringe_B_remaining_after_exp_uL: safeFormatNumeric(syringe_B_remaining_uL,1),
+                },
+                relevant_data: {
+                    target_temperature_celsius: safeFormatNumeric(temp_current_celsius, 2),
+                    start_collect_min_from_exp_start: safeFormatNumeric(start_collect_min_from_exp_start_val_numeric,3),
+                    fraction_number: num_fractions_to_collect_val, 
+                    first_tube: first_tube_for_this_exp,
+                    collect_duration_per_fraction_min: safeFormatNumeric((Q_total_uL_min > 0 && collectVolumePerFraction_uL > 0) ? (collectVolumePerFraction_uL / Q_total_uL_min) : 0, 3),
+                    experiment_steps: experiment_steps
+                },
+                warnings_specific_to_this_experiment: currentExpWarnings.length > 0 ? [...new Set(currentExpWarnings)] : undefined
+            });
+            // **** MODIFICATION END ****
+
+            allWarnings = [...new Set([...allWarnings, ...currentExpWarnings])];
+            nextAvailableTubeNumber += num_fractions_to_collect_val;
+            
+            cumulative_time_elapsed_overall_min += current_exp_time_accumulator_for_this_exp_steps;
+            if (!canGenerateJson) break;
+        } 
+
+        resultsContainer.style.display = 'block';
+        allWarnings = [...new Set(allWarnings)]; 
+
+        if (!canGenerateJson) {
+             experimentPlan.length = 0;
+            resultsDiv.innerHTML = `<pre>Plan generation aborted due to one or more critical errors. Review messages.</pre>`;
+            downloadLink.style.display = 'none'; refillSummaryDiv.style.display = 'none';
+            warningMessageElement.innerHTML = `<strong style="color: var(--critical-error-text);">PLAN GENERATION ABORTED:</strong><br>${allWarnings.join('<br><br>')}`;
+            warningMessageElement.className = 'alert critical-error'; warningMessageElement.style.display = 'block';
+        } else if (experimentPlan.length > 0) {
+            resultsDiv.innerHTML = `<pre>${JSON.stringify(experimentPlan[0], null, 2)}</pre>`;
+            if (allWarnings.length === 0) {
+                warningMessageElement.innerHTML = "<strong><i class='fas fa-check-circle'></i> Status:</strong> Plan generated successfully.";
+                warningMessageElement.className = 'alert success';
+            } else {
+                warningMessageElement.innerHTML = `<strong><i class='fas fa-exclamation-triangle'></i> Status:</strong> Plan generated with warnings/notes:<br>${allWarnings.join('<br><br>')}`;
+                warningMessageElement.className = 'alert warning';
+            }
+            warningMessageElement.style.display = 'block';
+
+            let totalSolventC_overall_uL = totalSolventC_mixed_in_slug_uL + totalSolventC_push_flush_uL; 
+            let summaryDesignType = originalSelectedDesignType;
+             if (summaryDesignType === 'CentralCompositeSimple') {
+                summaryDesignType = 'Central Composite (simple, alpha=1)';
+            }
+            if (allWarnings.some(w => w.includes("Defaulting to Full Factorial"))) {
+                summaryDesignType = `${summaryDesignType} (fallback to Full Factorial)`;
+            }
+
+            refillSummaryDiv.innerHTML = `
+                <h3><i class="fas fa-syringe"></i> Overall Sequence Summary</h3>
+                <ul>
+                    <li>Total experiments generated: <strong>${experimentPlan.length}</strong> (using ${summaryDesignType} design)</li>
+                    <li>Total estimated refills for Pump A (${pumpA_name}): <strong>${totalRefillsA}</strong></li>
+                    <li>Total estimated refills for Pump B (${pumpB_name}): <strong>${totalRefillsB}</strong></li>
+                    <li>Total estimated refill pauses (each ${formatDuration(refillPauseDurationCustom_min)}): <strong>${totalRefillPauses}</strong></li>
+                    <li>Total sequence duration (all experiments): <strong>${formatDuration(cumulative_time_elapsed_overall_min)}</strong></li>
+                </ul>
+                <h4>Total Estimated Reagent/Solvent Usage:</h4>
+                <ul>
+                    <li>Reagent A (${pumpA_name}): <strong>${totalReagentA_used_uL.toFixed(1)} µL</strong> (${(totalReagentA_used_uL/1000).toFixed(2)} mL)</li>
+                    <li>Reagent B (${pumpB_name}): <strong>${totalReagentB_used_uL.toFixed(1)} µL</strong> (${(totalReagentB_used_uL/1000).toFixed(2)} mL)</li>
+                    <li>Solvent C (${pumpC_for_json}):
+                        <ul>
+                            <li>Mixed in slug (Step 1): ${totalSolventC_mixed_in_slug_uL.toFixed(1)} µL</li>
+                            <li>For push/collection/flush (Step 2): ${totalSolventC_push_flush_uL.toFixed(1)} µL</li>
+                            <li><strong>Total: ${totalSolventC_overall_uL.toFixed(1)} µL</strong> (${(totalSolventC_overall_uL/1000).toFixed(2)} mL)</li>
+                        </ul>
+                    </li>
+                </ul>
+                <p style="font-size:0.85em; margin-top:1em;">Note: Refill pauses are scheduled at the beginning of an experiment if its reagent volume requirements exceed available syringe capacity. Ensure sufficient total sample volume is prepared.</p>
+            `;
+            refillSummaryDiv.style.display = 'block';
+
+            const timestamp = getFormattedDateTimeForFileName();
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(experimentPlan, null, 2));
+            downloadLink.setAttribute("href", dataStr);
+            downloadLink.setAttribute("download", `microreactor_plan_${originalSelectedDesignType}_${timestamp}.json`);
+            downloadLink.innerHTML = '<i class="fas fa-download"></i> Download Full Experiment Plan (JSON)';
+            downloadLink.style.display = 'flex';
+
+        } else { 
+             resultsDiv.innerHTML = `<pre>No valid experiment combinations were generated. Review inputs and any warnings.</pre>`;
+            if (allWarnings.length === 0 && designPoints.length === 0 ) { 
+                 allWarnings.push("<strong>Plan Generation:</strong> No design points were generated. Check factor settings (e.g., ensure varying factors if expected for selected design type).");
+            } else if (allWarnings.length === 0) { 
+                 allWarnings.push("<strong>Plan Generation:</strong> No experiments were successfully planned. This might be due to input combinations leading to zero flow rates or other non-viable conditions not explicitly flagged as errors.");
+            }
+            warningMessageElement.innerHTML = allWarnings.join('<br><br>');
+            warningMessageElement.className = 'alert warning'; warningMessageElement.style.display = 'block';
+            downloadLink.style.display = 'none'; refillSummaryDiv.style.display = 'none';
+        }
+
+        generateButton.innerHTML = originalButtonContent;
+        generateButton.disabled = false;
+    }
+    </script>
+</body>
+</html>
