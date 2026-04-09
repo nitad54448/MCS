@@ -117,9 +117,10 @@
                 <h2 class="text-2xl font-semibold text-slate-700 mb-1">Model Statistics</h2>
                 <p class="text-sm text-slate-500 mb-6">
                     Full RSM model fitted simultaneously on all varying factors.
-                    Coefficients are in coded units [-1,&nbsp;1]. Bold rows have 95% CIs that exclude zero (statistically significant).
+                    Coefficients are in <strong>actual units</strong>. Bold rows have 95% CIs that exclude zero (statistically significant).
                 </p>
                 <div class="space-y-8">
+
                     <div id="yield-stats-container"></div>
                     <div id="selectivity-stats-container"></div>
                     <div id="score-stats-container"></div>
@@ -225,7 +226,7 @@ function startManualMode() {
 
 let experimentData = [], factorKeys = [];
 
-// ─── Event Listeners ──────────────────────────────────────────────────────────
+// ─── Event Listeners
 fileInput.addEventListener('change', (e) => processFile(e.target.files[0]));
 fileUploadLabel.addEventListener('dragover',  (e) => { e.preventDefault(); e.stopPropagation(); fileUploadLabel.classList.add('bg-slate-100'); });
 fileUploadLabel.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); fileUploadLabel.classList.remove('bg-slate-100'); });
@@ -237,7 +238,7 @@ alertClose.addEventListener('click', () => alertModal.style.display = 'none');
 
 function customAlert(msg) { alertMessage.textContent = msg; alertModal.style.display = 'flex'; }
 
-// ─── File Handling ────────────────────────────────────────────────────────────
+// Files
 function processFile(file) {
     if (!file) return;
     if (!file.type.match('application/json')) { customAlert('Invalid file type. Please upload a JSON file or edit the data manually.'); return; }
@@ -294,7 +295,7 @@ function transformNewJsonFormat(rawData) {
     return { factors: factorDefs.map(({ name, unit }) => ({ name, unit })), experiments };
 }
 
-// ─── Table Rendering ──────────────────────────────────────────────────────────
+// Tables
 function renderTable(factors) {
     tableHead.innerHTML = '';
     tableBody.innerHTML = '';
@@ -336,7 +337,7 @@ function handleSliderChange(e) {
     analyzeData();
 }
 
-// ─── Add / Delete Rows ────────────────────────────────────────────────────────
+//  Rows 
 document.getElementById('add-row-btn').addEventListener('click', () => {
     if (experimentData.length === 0) return;
     const newId  = Math.max(...experimentData.map(e => e.id)) + 1;
@@ -365,7 +366,7 @@ tableBody.addEventListener('click', (e) => {
     }
 });
 
-// ─── Matrix Math ──────────────────────────────────────────────────────────────
+//  Matrix 
 const matrix = {
     multiply: (a, b) => a.map((r, i) => b[0].map((_, j) => r.reduce((s, e, k) => s + e * b[k][j], 0))),
     transpose: a => a[0].map((_, i) => a.map(r => r[i])),
@@ -389,12 +390,13 @@ const matrix = {
     }
 };
 
-// ─── Factor Coding (§7.1) ─────────────────────────────────────────────────────
+//  Factor Coding 
 // coded = 2*(x - xMin)/(xMax - xMin) - 1
 function codeValue(v, lo, hi) { return (hi === lo) ? 0 : 2 * (v - lo) / (hi - lo) - 1; }
 function uncodeValue(c, lo, hi) { return lo + (c + 1) / 2 * (hi - lo); }
 
-// ─── Core Analysis (§10) ──────────────────────────────────────────────────────
+
+//  Analysis
 /*
  * analyzeData:
  *  For each experiment, the weighted score is:
@@ -429,13 +431,13 @@ function displayOptimum(valueEl, expEl, result, unit, precision = 1) {
     else { valueEl.textContent = '-'; expEl.textContent = ''; }
 }
 
-// ─── Helper: valid response value ─────────────────────────────────────────────
+// Helper: valid response value 
 function getResponseValue(exp, key) {
     if (key === 'score') return exp.score;   // score is always computed
     return exp[key];                          // yield or selectivity (may be null)
 }
 
-// ─── 2-Factor Model for Contour Plots (§7.2, §7.3) ───────────────────────────
+// Factor Model for Contour Plots 
 /*
  * buildModel2F:
  *  Fits a quadratic or linear RSM model for one pair of factors, in coded space.
@@ -473,18 +475,10 @@ function buildModel2F(factorXName, factorYName, yKey) {
     return { coeffs: B, xMin, xMax, yMin, yMax, isQuad };
 }
 
+// Full N-Factor Model with Statistics 
+
 // ─── Full N-Factor Model with Statistics (§7, §8) ─────────────────────────────
-/*
- * buildModelWithStats:
- *  Fits a full RSM model on ALL active varying factors simultaneously.
- *  All factors are coded to [-1,1] first.
- *  Model type:
- *    isOptimDesign=true  → quadratic: intercept + linear + squared + interactions
- *    isOptimDesign=false → screening: intercept + linear only
- *  Returns rich stats object or null.
- */
-function buildModelWithStats(varyingFactors, yKey, isOptimDesign) {
-    // Only keep data points with a valid response AND all factor values
+function buildModelWithStats(varyingFactors, yKey, isOptimDesign, useCoded = true) {
     const dataPoints = experimentData.filter(d => {
         const rv = getResponseValue(d, yKey);
         if (rv === null || rv === undefined) return false;
@@ -492,39 +486,37 @@ function buildModelWithStats(varyingFactors, yKey, isOptimDesign) {
     });
     if (dataPoints.length < 2) return null;
 
-    // Per-factor coding bounds
     const bounds = {};
     varyingFactors.forEach(f => {
         const vals = dataPoints.map(p => p.settings[f]);
         bounds[f] = { min: Math.min(...vals), max: Math.max(...vals) };
     });
 
-    // Drop constant factors (they would make X'X singular)
     const activeFacs = varyingFactors.filter(f => bounds[f].min !== bounds[f].max);
     if (activeFacs.length === 0) return null;
 
-    // ── Build term list ──────────────────────────────────────────────────
-    // §7.2: screening → linear only; optimisation → full second-order
     const termNames = ['Intercept'];
-    activeFacs.forEach(f => termNames.push(f));                          // linear
+    activeFacs.forEach(f => termNames.push(f));
     if (isOptimDesign) {
-        activeFacs.forEach(f => termNames.push(`${f} \u00b2`));          // quadratic x²
+        activeFacs.forEach(f => termNames.push(`${f} \u00b2`));
         for (let i = 0; i < activeFacs.length; i++)
             for (let j = i + 1; j < activeFacs.length; j++)
-                termNames.push(`${activeFacs[i]} \u00d7 ${activeFacs[j]}`); // interaction x_i*x_j
+                termNames.push(`${activeFacs[i]} \u00d7 ${activeFacs[j]}`);
     }
     const p = termNames.length;
-    if (dataPoints.length < p) return null; // under-determined system
+    if (dataPoints.length < p) return null; 
 
     // ── Design matrix X ──────────────────────────────────────────────────
     const Xmat = dataPoints.map(dp => {
-        const coded = activeFacs.map(f => codeValue(dp.settings[f], bounds[f].min, bounds[f].max));
-        const row = [1, ...coded];
+        const rowValues = activeFacs.map(f => 
+            useCoded ? codeValue(dp.settings[f], bounds[f].min, bounds[f].max) : dp.settings[f]
+        );
+        const row = [1, ...rowValues];
         if (isOptimDesign) {
-            coded.forEach(c => row.push(c * c));
-            for (let i = 0; i < coded.length; i++)
-                for (let j = i + 1; j < coded.length; j++)
-                    row.push(coded[i] * coded[j]);
+            rowValues.forEach(c => row.push(c * c));
+            for (let i = 0; i < rowValues.length; i++)
+                for (let j = i + 1; j < rowValues.length; j++)
+                    row.push(rowValues[i] * rowValues[j]);
         }
         return row;
     });
@@ -532,29 +524,23 @@ function buildModelWithStats(varyingFactors, yKey, isOptimDesign) {
     const yVec = dataPoints.map(dp => getResponseValue(dp, yKey));
     const yMat = yVec.map(v => [v]);
 
-    // ── Least squares (§7.3): b = (X'X)^{-1} X'y ──────────────────────
     const Xt      = matrix.transpose(Xmat);
     const XtX_inv = matrix.invert(matrix.multiply(Xt, Xmat));
     if (!XtX_inv) return null;
     const B = matrix.multiply(XtX_inv, matrix.multiply(Xt, yMat)).map(c => c[0]);
 
     const n = dataPoints.length;
-
-    // ── Fitted values & residuals ────────────────────────────────────────
     const fitted    = Xmat.map(row => row.reduce((s, v, i) => s + v * B[i], 0));
     const residuals = yVec.map((y, i) => y - fitted[i]);
     const yMean     = yVec.reduce((a, b) => a + b, 0) / n;
 
-    // ── Sums of squares (§8) ─────────────────────────────────────────────
     const SSres = residuals.reduce((s, r) => s + r * r, 0);
     const SStot = yVec.reduce((s, y) => s + (y - yMean) ** 2, 0);
     const MSres = SSres / Math.max(n - p, 1);
 
-    // ── R² statistics (§8) ───────────────────────────────────────────────
     const Rsq    = SStot > 0 ? 1 - SSres / SStot : 0;
     const adjRsq = SStot > 0 ? 1 - (SSres / (n - p)) / (SStot / (n - 1)) : 0;
 
-    // ── PRESS (leave-one-out, §8) ────────────────────────────────────────
     let press = 0;
     for (let i = 0; i < n; i++) {
         const xi  = Xmat[i];
@@ -566,17 +552,13 @@ function buildModelWithStats(varyingFactors, yKey, isOptimDesign) {
     }
     const predRsq = SStot > 0 ? 1 - press / SStot : 0;
 
-    // ── Standard deviation & C.V. (§8) ──────────────────────────────────
     const stdDev = Math.sqrt(MSres);
     const cv     = yMean !== 0 ? (stdDev / Math.abs(yMean)) * 100 : NaN;
 
-    // ── Adequate Precision (§8) ──────────────────────────────────────────
-    // AP = (max(ŷ) - min(ŷ)) / sqrt(p * MSres / n)
     const fittedMax     = Math.max(...fitted);
     const fittedMin     = Math.min(...fitted);
     const adeqPrecision = (fittedMax - fittedMin) / Math.sqrt(p * MSres / n);
 
-    // ── Coefficient SEs & 95% CI (§8) ───────────────────────────────────
     const seB   = B.map((_, i) => Math.sqrt(MSres * XtX_inv[i][i]));
     const tCrit = 1.96;
     const ciLow  = B.map((b, i) => b - tCrit * seB[i]);
@@ -584,6 +566,7 @@ function buildModelWithStats(varyingFactors, yKey, isOptimDesign) {
 
     return { termNames, B, seB, ciLow, ciHigh, n, p, stdDev, mean: yMean, cv, press, Rsq, adjRsq, predRsq, adeqPrecision };
 }
+
 
 // ─── Render Statistics Table ──────────────────────────────────────────────────
 function renderModelStatsTable(stats, responseName, containerId) {
@@ -630,8 +613,12 @@ function renderModelStatsTable(stats, responseName, containerId) {
             <h3 class="font-bold text-xl ${cfg.hdr}">${cfg.label} Model Statistics</h3>
             <span class="text-xs px-2 py-0.5 rounded-full font-medium ${cfg.badge}">n = ${stats.n} &nbsp;|&nbsp; p = ${stats.p}</span>
         </div>
-        <p class="text-xs text-slate-500 mb-4">Coefficients in coded units [-1, 1]. &nbsp;95% CI uses t = 1.96. &nbsp;<strong>Bold</strong> rows have CIs excluding zero.</p>
+        <p class="text-xs text-slate-500 mb-4">Coefficients are in <strong>actual units</strong>. &nbsp;95% CI uses t = 1.96. &nbsp;<strong>Bold</strong> rows have CIs excluding zero.</p>
         <div class="overflow-x-auto mb-4">
+
+
+
+
             <table class="w-full text-sm text-left stats-coeff-table">
                 <thead class="text-xs text-slate-600 uppercase bg-white bg-opacity-60">
                     <tr>
@@ -789,10 +776,12 @@ function updateAdvancedVisualizations() {
     const hasSelectivity = experimentData.some(d => d.selectivity !== null);
     const hasScore       = experimentData.some(d => d.yield !== null || d.selectivity !== null);
 
+
     // ── Build N-factor stats models ───────────────────────────────────────
-    const yieldStats = hasYield       ? buildModelWithStats(varyingFactors, 'yield',       isOptimDesign) : null;
-    const selecStats = hasSelectivity ? buildModelWithStats(varyingFactors, 'selectivity', isOptimDesign) : null;
-    const scoreStats = hasScore       ? buildModelWithStats(varyingFactors, 'score',       isOptimDesign) : null;
+    // Pass 'false' to evaluate coefficients and standard errors in actual parameter units
+    const yieldStats = hasYield       ? buildModelWithStats(varyingFactors, 'yield',       isOptimDesign, false) : null;
+    const selecStats = hasSelectivity ? buildModelWithStats(varyingFactors, 'selectivity', isOptimDesign, false) : null;
+    const scoreStats = hasScore       ? buildModelWithStats(varyingFactors, 'score',       isOptimDesign, false) : null;
 
 //pdf export global
 if (yieldStats || selecStats || scoreStats) {
