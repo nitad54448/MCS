@@ -1,0 +1,24 @@
+{
+  "name": "mcs",
+  "version": "1.0.0",
+  "description": "Welcome to the **Scherrmann Lab Microreactor DoE (Design of Experiments) Suite**. This repository contains two interconnected HTML/JavaScript applications designed to plan, execute, and analyze continuous-flow microreactor experiments.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nitad54448/MCS.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/nitad54448/MCS/issues"
+  },
+  "homepage": "https://github.com/nitad54448/MCS#readme",
+  "devDependencies": {
+    "tailwindcss": "^3.4.19"
+  }
+}
