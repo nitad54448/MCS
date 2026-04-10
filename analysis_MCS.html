@@ -5,166 +5,199 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Experiment Data Analyzer</title>
     <link href="./dist/output.css" rel="stylesheet">
+    
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        sci: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            200: '#bae6fd',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            800: '#075985',
+                            900: '#0c4a6e',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
     <style>
-
         @media print {
-    body {
-        background: white;
-    }
-    .card {
-        box-shadow: none;
-        border: 1px solid #ddd;
-        break-inside: avoid;
-    }
-    /* Hide buttons, sliders, and file uploads, but keep text inputs */
-    button, input[type="range"], input[type="file"] {
-        display: none !important;
-    }
-    /* correction, erreur dans v14, le 10 avril 2026 */
-    #experiments-table input {
-        border: none !important;
-        background: transparent !important;
-        padding: 0 !important;
-        margin: 0 !important;
-        color: black !important;
-        width: auto !important;
-    }
-}
-
-
-        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
-        .card { background-color: white; border-radius: 0.75rem; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1); padding: 1.5rem; }
+            body { background: white; }
+            .card { box-shadow: none; border: 1px solid #ddd; break-inside: avoid; }
+            button, input[type="range"], input[type="file"], .no-print { display: none !important; }
+            #experiments-table input { border: none !important; background: transparent !important; padding: 0 !important; margin: 0 !important; color: black !important; width: auto !important; }
+        }
+        body { background-color: #f1f5f9; }
+        .card { background-color: white; border-radius: 0.5rem; box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1); border: 1px solid #e2e8f0; padding: 1.5rem; }
         input[type="number"] { -moz-appearance: textfield; }
         input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-        .file-upload-label { border: 2px dashed #cbd5e1; padding: 2rem; text-align: center; cursor: pointer; border-radius: 0.5rem; transition: background-color 0.2s, border-color 0.2s; }
-        .file-upload-label:hover { background-color: #f1f5f9; border-color: #94a3b8; }
-        .alert-modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4); align-items: center; justify-content: center; }
-        .alert-modal-content { background-color: #fefefe; margin: auto; padding: 20px; border: 1px solid #888; width: 80%; max-width: 400px; border-radius: 0.5rem; text-align: center; box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2); }
-        .alert-modal-close { background-color: #4285F4; color: white; padding: 10px 20px; border: none; border-radius: 0.25rem; cursor: pointer; margin-top: 1rem; }
-        .stats-coeff-table td, .stats-coeff-table th { padding: 0.35rem 0.6rem; }
-        .stats-summary-table td { padding: 0.35rem 0.75rem; }
+        .file-upload-label { border: 2px dashed #cbd5e1; padding: 3rem; text-align: center; cursor: pointer; border-radius: 0.5rem; transition: all 0.2s; background: #f8fafc; }
+        .file-upload-label:hover { background-color: #f1f5f9; border-color: #0ea5e9; }
+        .stats-coeff-table th, .stats-coeff-table td { padding: 0.5rem; border-bottom: 1px solid #f1f5f9; }
+        .stats-summary-table td { padding: 0.5rem; }
     </style>
 </head>
+<body class="font-sans text-slate-800 antialiased pb-28">
 
-<body class="p-4 md:p-8 pb-28">
+<header class="bg-slate-900 text-white shadow-md border-b border-sci-900">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+            <h1 class="text-2xl font-semibold tracking-tight">Experiment Data <span class="text-sci-500 font-bold">Analyzer</span></h1>
+            <p class="text-sm text-slate-400 mt-1">Response Surface Methodology & Optimization</p>
+        </div>
+        <div class="no-print space-x-3 flex">
+            <button id="manual-start-btn" class="bg-sci-800 hover:bg-sci-600 text-white text-sm font-medium py-2 px-4 rounded transition-colors border border-sci-600">
+                Manual Setup
+            </button>
+            <button id="print-pdf-btn" class="hidden bg-sci-600 hover:bg-sci-500 text-white text-sm font-medium py-2 px-4 rounded transition-colors shadow-sm flex items-center">
+                <svg class="w-4 h-4 inline mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
+                Export PDF
+            </button>
+        </div>
+    </div>
+</header>
 
-<div class="max-w-7xl mx-auto space-y-8">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 space-y-6">
 
-    <header class="text-center">
-        <h1 class="text-4xl font-bold text-slate-800">Experiment Data Analyzer</h1>
-        <p class="text-lg text-slate-600 mt-2">Upload the JSON plan, enter results, find optima, and visualize response surfaces.</p>
-    </header>
+    <div id="main-content" class="space-y-6">
 
-    <button id="manual-start-btn"
-    class="mt-4 bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded-lg">
-    Manual setup
-</button>
-
-
-    <div id="main-content" class="space-y-8">
-
-        <div id="upload-section" class="card">
-            <h2 class="text-2xl font-semibold text-slate-700 mb-4">Upload Experiment Plan</h2>
-            <label for="json-file-input" id="file-upload-label" class="file-upload-label block">
-                <svg class="mx-auto h-12 w-12 text-slate-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true"><path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>
-                <span class="mt-2 block text-sm font-medium text-slate-600">Click to upload or drag and drop</span>
-                <span id="file-name" class="mt-1 block text-xs text-slate-500">JSON files only</span>
+        <div id="upload-section" class="card max-w-2xl mx-auto mt-12">
+            <h2 class="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
+                <svg class="w-5 h-5 text-sci-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                Import Data Plan
+            </h2>
+            <label for="json-file-input" id="file-upload-label" class="file-upload-label block group">
+                <div class="mx-auto h-12 w-12 text-slate-400 group-hover:text-sci-500 transition-colors">
+                    <svg stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true"><path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                </div>
+                <span class="mt-3 block text-sm font-medium text-slate-700">Select a JSON file or drag and drop</span>
+                <span id="file-name" class="mt-1 block text-xs text-slate-500">Structured experiment data only</span>
             </label>
             <input type="file" id="json-file-input" class="hidden" accept=".json,application/json">
         </div>
 
-        <div id="results-section" class="hidden space-y-8">
+        <div id="results-section" class="hidden space-y-6">
 
-            <div class="card">
-                <h2 class="text-2xl font-semibold text-slate-700 mb-4">Measured Optimums &amp; Weighting</h2>
-                <div id="optimality-sliders" class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            <div class="card grid grid-cols-1 xl:grid-cols-3 gap-8">
+                <div class="xl:col-span-1 space-y-6 border-b xl:border-b-0 xl:border-r border-slate-200 pb-6 xl:pb-0 xl:pr-6">
+                    <h2 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4">Target Weighting</h2>
                     <div>
-                        <label for="yield-weight" class="block text-sm font-medium text-slate-700">Yield Importance: <span id="yield-weight-label" class="font-bold">50%</span></label>
-                        <input id="yield-weight" type="range" min="0" max="100" value="50" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer">
+                        <label for="yield-weight" class="flex justify-between text-sm font-medium text-slate-700 mb-2">
+                            <span>Yield</span> <span id="yield-weight-label" class="text-sci-600 font-bold font-mono">50%</span>
+                        </label>
+                        <input id="yield-weight" type="range" min="0" max="100" value="50" class="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-sci-600">
                     </div>
                     <div>
-                        <label for="selectivity-weight" class="block text-sm font-medium text-slate-700">Selectivity Importance: <span id="selectivity-weight-label" class="font-bold">50%</span></label>
-                        <input id="selectivity-weight" type="range" min="0" max="100" value="50" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer">
+                        <label for="selectivity-weight" class="flex justify-between text-sm font-medium text-slate-700 mb-2">
+                            <span>Selectivity</span> <span id="selectivity-weight-label" class="text-sci-600 font-bold font-mono">50%</span>
+                        </label>
+                        <input id="selectivity-weight" type="range" min="0" max="100" value="50" class="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-sci-600">
                     </div>
                 </div>
-                <div id="optimum-results" class="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
-                    <div class="p-4 bg-green-50 border border-green-200 rounded-lg"><h3 class="font-semibold text-green-800">Highest Measured Yield</h3><p id="best-yield" class="text-2xl font-bold text-green-600 mt-1">-</p><span class="text-sm text-slate-500" id="best-yield-exp"></span></div>
-                    <div class="p-4 bg-blue-50 border border-blue-200 rounded-lg"><h3 class="font-semibold text-blue-800">Highest Measured Selectivity</h3><p id="best-selectivity" class="text-2xl font-bold text-blue-600 mt-1">-</p><span class="text-sm text-slate-500" id="best-selectivity-exp"></span></div>
-                    <div class="p-4 bg-purple-50 border border-purple-200 rounded-lg"><h3 class="font-semibold text-purple-800">Best Measured Weighted Score</h3><p id="best-overall" class="text-2xl font-bold text-purple-600 mt-1">-</p><span class="text-sm text-slate-500" id="best-overall-exp"></span></div>
+
+                <div class="xl:col-span-2">
+                    <h2 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4">Measured Optimums</h2>
+                    <div id="optimum-results" class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div class="p-4 bg-slate-50 rounded-lg border border-slate-200 text-center">
+                            <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Peak Yield</h3>
+                            <p id="best-yield" class="text-2xl font-mono text-slate-800 mt-1">-</p>
+                            <span class="text-xs text-sci-600 font-medium" id="best-yield-exp"></span>
+                        </div>
+                        <div class="p-4 bg-slate-50 rounded-lg border border-slate-200 text-center">
+                            <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Peak Selectivity</h3>
+                            <p id="best-selectivity" class="text-2xl font-mono text-slate-800 mt-1">-</p>
+                            <span class="text-xs text-sci-600 font-medium" id="best-selectivity-exp"></span>
+                        </div>
+                        <div class="p-4 bg-sci-50 rounded-lg border border-sci-200 text-center shadow-sm">
+                            <h3 class="text-xs font-semibold text-sci-800 uppercase tracking-wide">Best Score</h3>
+                            <p id="best-overall" class="text-2xl font-mono text-sci-600 font-bold mt-1">-</p>
+                            <span class="text-xs text-sci-800 font-medium" id="best-overall-exp"></span>
+                        </div>
+                    </div>
                 </div>
             </div>
 
             <div class="card overflow-x-auto">
-                <h2 class="text-2xl font-semibold text-slate-700 mb-4">Experiment Data</h2>
-                <table id="experiments-table" class="w-full text-sm text-left text-slate-500">
-                    <thead class="text-xs text-slate-700 uppercase bg-slate-50"></thead>
-                    <tbody></tbody>
-                </table>
-                <div class="mt-4 flex justify-end">
-                    <button id="add-row-btn" class="bg-slate-500 hover:bg-slate-600 text-white font-medium py-2 px-4 rounded-lg transition-colors text-sm">+ Add Experiment Row</button>
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-lg font-semibold text-slate-800">Experiment Matrix</h2>
+                    <button id="add-row-btn" class="text-xs bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium py-1.5 px-3 rounded shadow-sm transition-colors">
+                        + Add Row
+                    </button>
+                </div>
+                <div class="border border-slate-200 rounded-lg overflow-hidden">
+                    <table id="experiments-table" class="w-full text-sm text-left text-slate-600">
+                        <thead class="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-200 font-semibold"></thead>
+                        <tbody class="divide-y divide-slate-100 font-mono text-sm"></tbody>
+                    </table>
                 </div>
             </div>
+
 
             <div id="predicted-optima-card" class="card hidden">
-                <h2 class="text-2xl font-semibold text-slate-700 mb-4">Predicted Optimum Conditions</h2>
-                <p class="text-sm text-slate-600 mb-4">Based on the models generated from your data, these are the predicted best conditions for each response.</p>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div id="predicted-yield-display" class="hidden p-4 bg-green-50 border border-green-200 rounded-lg"></div>
-                    <div id="predicted-selectivity-display" class="hidden p-4 bg-blue-50 border border-blue-200 rounded-lg"></div>
+                <h2 class="text-lg font-semibold text-slate-800 mb-2">Predicted Optimum Conditions</h2>
+                <p class="text-sm text-slate-500 mb-5">Calculated from the response surface models.</p>
+                
+                <div id="predicted-score-display" class="hidden mb-6"></div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6 border-t border-slate-200">
+                    <div id="predicted-yield-display" class="hidden space-y-3"></div>
+                    <div id="predicted-selectivity-display" class="hidden space-y-3"></div>
                 </div>
             </div>
+            
 
             <div class="card">
-                <h2 class="text-2xl font-semibold text-slate-700 mb-4">2D Contour Plots</h2>
-                <p id="contour-plots-placeholder" class="text-sm text-slate-600 mb-4">These plots show the predicted relationships between pairs of factors. Enter at least 6 results with varying factors to generate the models.</p>
-                <div id="contour-plots-container" class="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-12"></div>
+                <h2 class="text-lg font-semibold text-slate-800 mb-2">Response Surfaces</h2>
+                <p id="contour-plots-placeholder" class="text-sm text-slate-500 mb-4">Enter at least 6 varied experiments to generate 2D contour models.</p>
+                <div id="contour-plots-container" class="grid grid-cols-1 lg:grid-cols-2 gap-8"></div>
             </div>
 
-            <!-- Section 6: Model Statistics -->
-            <div id="model-stats-section" class="card hidden">
-                <h2 class="text-2xl font-semibold text-slate-700 mb-1">Model Statistics</h2>
-                <p class="text-sm text-slate-500 mb-6">
-                    Full RSM model fitted simultaneously on all varying factors.
-                    Coefficients are in <strong>actual units</strong>. Bold rows have 95% CIs that exclude zero (statistically significant).
-                </p>
-                <div class="space-y-8">
 
-                    <div id="yield-stats-container"></div>
-                    <div id="selectivity-stats-container"></div>
-                    <div id="score-stats-container"></div>
+      <div id="model-stats-section" class="card hidden">
+                <h2 class="text-lg font-semibold text-slate-800 mb-1">Model Statistics</h2>
+                <p class="text-sm text-slate-500 mb-6">Full RSM model fitted on varying factors. Coefficients in actual units.</p>
+                
+                <div class="flex flex-col gap-8 w-full">
+                    <div id="yield-stats-container" class="overflow-x-auto empty:hidden"></div>
+                    <div id="selectivity-stats-container" class="overflow-x-auto empty:hidden"></div>
+                    <div id="score-stats-container" class="overflow-x-auto empty:hidden"></div>
                 </div>
             </div>
+
 
         </div>
     </div>
-
-<div class="text-center mt-4">
-    <button id="print-pdf-btn"
-        class="hidden bg-blue-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-lg">
-        Export PDF Report
-    </button>
 </div>
 
-<div class="h-10 w-full"></div>
-
-<footer class="fixed bottom-0 left-0 w-full bg-[#f8fafc] border-t border-slate-200 py-3 text-center text-xs text-slate-400 z-0">
-    <p>Version 14.1, updated 10 april 2026, NitaD & MCS Univ Paris-Saclay.</p>
-</footer>
-
-
-</div>
-
-<div id="alert-modal" class="alert-modal">
-    <div class="alert-modal-content">
-        <p id="alert-message"></p>
-        <button id="alert-close" class="alert-modal-close">OK</button>
+<div id="alert-modal" style="display: none;" class="fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 text-center border border-slate-100">
+        <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
+            <svg class="h-6 w-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+        </div>
+        <p id="alert-message" class="text-slate-700 font-medium"></p>
+        <button id="alert-close" class="mt-6 w-full inline-flex justify-center rounded-lg border border-transparent bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-slate-800 focus:outline-none">
+            Acknowledge
+        </button>
     </div>
 </div>
 
-
+<footer class="fixed bottom-0 w-full bg-white border-t border-slate-200 py-2 text-center z-40 no-print">
+    <p class="text-[10px] text-slate-400 font-mono uppercase tracking-widest">v14.2 - April 10th, 2026 - NitaD & MCS Univ Paris-Saclay</p>
+</footer>
 
 
 <script>
@@ -195,6 +228,8 @@ const predictedSelectivityDisplay = document.getElementById('predicted-selectivi
 const contourPlotsContainer   = document.getElementById('contour-plots-container');
 const contourPlotsPlaceholder = document.getElementById('contour-plots-placeholder');
 const modelStatsSection       = document.getElementById('model-stats-section');
+
+const predictedScoreDisplay = document.getElementById('predicted-score-display');
 
 const printPdfBtn = document.getElementById('print-pdf-btn');
 
@@ -327,18 +362,39 @@ function renderTable(factors) {
     });
 }
 
+//depuis la version 14.2, limite à 100%
 function handleTableInputChange(e) {
     if (!e.target.hasAttribute('data-metric')) return;
     const rowIndex = e.target.closest('tr').dataset.index;
     const metric   = e.target.dataset.metric;
     const rawValue = e.target.value.replace(',', '.');
-    const value    = (rawValue === '' || isNaN(rawValue)) ? null : parseFloat(rawValue);
+    let value      = (rawValue === '' || isNaN(parseFloat(rawValue))) ? null : parseFloat(rawValue);
+
+    if (value !== null) {
+        // 1. Clamp Yield and Selectivity to [0, 100]
+        if (metric === 'yield' || metric === 'selectivity') {
+            value = Math.max(0, Math.min(100, value));
+            e.target.value = value; // Update the input field visually
+        } 
+        // 2. Clamp Time and Molar Ratio to strictly positive values (> 0)
+        else if (metric === 'setting') {
+            const factor = e.target.dataset.factor.toLowerCase();
+            if (factor.includes('time') || factor.includes('ratio')) {
+                if (value <= 0) {
+                    value = 0.01; // Enforce a >0 minimum
+                    e.target.value = value;
+                }
+            }
+        }
+    }
+
     if (rowIndex < experimentData.length) {
         if (metric === 'setting') experimentData[rowIndex].settings[e.target.dataset.factor] = value;
         else experimentData[rowIndex][metric] = value;
         analyzeData();
     }
 }
+
 
 function handleSliderChange(e) {
     if (e && e.target === yieldWeightSlider)       selectivityWeightSlider.value = 100 - yieldWeightSlider.value;
@@ -624,6 +680,7 @@ function renderModelStatsTable(stats, responseName, containerId) {
             <h3 class="font-bold text-xl ${cfg.hdr}">${cfg.label} Model Statistics</h3>
             <span class="text-xs px-2 py-0.5 rounded-full font-medium ${cfg.badge}">n = ${stats.n} &nbsp;|&nbsp; p = ${stats.p}</span>
         </div>
+
         <p class="text-xs text-slate-500 mb-4">Coefficients are in <strong>actual units</strong>. &nbsp;95% CI uses t = 1.96. &nbsp;<strong>Bold</strong> rows have CIs excluding zero.</p>
         <div class="overflow-x-auto mb-4">
 
@@ -731,28 +788,87 @@ function findOptimumRandomWalk(varyingFactors, yKey, isOptimDesign) {
     return { z: bestZ, cappedZ, params };
 }
 
-// ─── Global Optimum Display ───────────────────────────────────────────────────
+
+// prediction 
+function predictResponseAt(params, varyingFactors, yKey, isOptimDesign) {
+    const stats = buildModelWithStats(varyingFactors, yKey, isOptimDesign, true);
+    if (!stats) return null;
+
+    const dataPoints = experimentData.filter(d => getResponseValue(d, yKey) !== null && varyingFactors.every(f => d.settings[f] != null));
+    if (dataPoints.length === 0) return null;
+
+    const bounds = {};
+    varyingFactors.forEach(f => {
+        const vals = dataPoints.map(p => p.settings[f]);
+        bounds[f] = { min: Math.min(...vals), max: Math.max(...vals) };
+    });
+
+    const activeFacs = varyingFactors.filter(f => bounds[f].min !== bounds[f].max);
+    const coded = activeFacs.map(f => codeValue(params[f], bounds[f].min, bounds[f].max));
+
+    const row = [1, ...coded];
+    if (isOptimDesign) {
+        coded.forEach(c => row.push(c * c));
+        for (let i = 0; i < coded.length; i++)
+            for (let j = i + 1; j < coded.length; j++)
+                row.push(coded[i] * coded[j]);
+    }
+    // Calculate and clamp between 0% and 100%
+    return Math.max(0, Math.min(100, row.reduce((s, v, i) => s + v * stats.B[i], 0)));
+}
+
+
+
+//  Global Optimum Display, considers the relative weight
 function displayGlobalOptimum(responseName, varyingFactors, containerElement, isOptimDesign) {
     if (varyingFactors.length < 2) return;
     const result = findOptimumRandomWalk(varyingFactors, responseName, isOptimDesign);
     if (!result) return;
 
-    const isY = responseName === 'yield';
-    const bgC = isY ? 'bg-green-100 border-green-300' : 'bg-blue-100 border-blue-300';
-    const txC = isY ? 'text-green-900' : 'text-blue-900';
-    const hlC = isY ? 'text-green-700' : 'text-blue-700';
+    let bgC, txC, hlC, title, displayVal, extraHtml = '';
+    
+    if (responseName === 'yield') {
+        bgC = 'bg-slate-50 border-slate-200'; txC = 'text-slate-800'; hlC = 'text-slate-900'; 
+        title = 'Yield Peak'; displayVal = `${result.cappedZ.toFixed(2)}%`;
+    } else if (responseName === 'selectivity') {
+        bgC = 'bg-slate-50 border-slate-200'; txC = 'text-slate-800'; hlC = 'text-slate-900'; 
+        title = 'Selectivity Peak'; displayVal = `${result.cappedZ.toFixed(2)}%`;
+    } else {
+        bgC = 'bg-sci-50 border-sci-300'; txC = 'text-sci-900'; hlC = 'text-sci-700'; 
+        title = '🌟 Global Optimum (Weighted Score)'; 
+        displayVal = `Score: ${result.z.toFixed(3)}`;
+
+        // Calculate expected Y and S at these optimal params
+        const predY = predictResponseAt(result.params, varyingFactors, 'yield', isOptimDesign);
+        const predS = predictResponseAt(result.params, varyingFactors, 'selectivity', isOptimDesign);
+        
+        const yText = predY !== null ? `<span class="text-green-700 font-bold">${predY.toFixed(1)}%</span>` : 'N/A';
+        const sText = predS !== null ? `<span class="text-blue-700 font-bold">${predS.toFixed(1)}%</span>` : 'N/A';
+
+        extraHtml = `
+            <div class="mt-4 pt-3 border-t border-sci-200 text-sm">
+                <p class="font-medium text-sci-800 mb-2">Expected results at these conditions:</p>
+                <div class="flex gap-4">
+                    <div class="bg-white/60 px-3 py-1.5 rounded border border-sci-200">Yield: ${yText}</div>
+                    <div class="bg-white/60 px-3 py-1.5 rounded border border-sci-200">Selectivity: ${sText}</div>
+                </div>
+            </div>`;
+    }
 
     const el = document.createElement('div');
-    el.className = `mt-6 p-4 border-2 rounded-lg shadow-sm ${bgC}`;
-    const paramsHtml = Object.entries(result.params).map(([k, v]) => `<li><strong>${k}:</strong> ${v.toFixed(2)}</li>`).join('');
+    el.className = `mt-2 p-5 border rounded-xl shadow-sm ${bgC}`;
+    const paramsHtml = Object.entries(result.params).map(([k, v]) => `<li class="font-mono text-sm"><strong>${k}:</strong> ${v.toFixed(2)}</li>`).join('');
+    
     el.innerHTML = `
-        <h4 class="font-bold text-lg ${txC}">&#127775; Global RSM Optimum</h4>
-        <p class="text-sm mt-1 ${txC}">The response surface predicts a peak of <strong class="${hlC}">${result.cappedZ.toFixed(2)}%</strong> at:</p>
-        <ul class="list-disc list-inside mt-2 text-sm ${txC}">${paramsHtml}</ul>`;
+        <h4 class="font-bold text-lg ${txC}">${title}</h4>
+        <p class="text-sm mt-1 ${txC}">The mathematical model predicts a peak <strong class="${hlC}">${displayVal}</strong> at:</p>
+        <ul class="list-disc list-inside mt-3 text-sm ${txC} space-y-1">${paramsHtml}</ul>
+        ${extraHtml}`;
     containerElement.appendChild(el);
 }
 
-// ─── Main Visualization Orchestrator ─────────────────────────────────────────
+
+// main visual
 function updateAdvancedVisualizations() {
     contourPlotsContainer.innerHTML = '';
     predictedOptimaCard.classList.add('hidden');
@@ -860,13 +976,26 @@ if (yieldStats || selecStats || scoreStats) {
         if (yieldModel || selecModel) contourPlotsContainer.appendChild(plotWrapper);
     });
 
+    
     if (hasYieldModels || hasSelecModels) {
         predictedOptimaCard.classList.remove('hidden');
-        if (hasYieldModels) predictedYieldDisplay.classList.remove('hidden');
-        if (hasSelecModels) predictedSelectivityDisplay.classList.remove('hidden');
-        displayGlobalOptimum('yield',       varyingFactors, predictedYieldDisplay,       isOptimDesign);
-        displayGlobalOptimum('selectivity', varyingFactors, predictedSelectivityDisplay, isOptimDesign);
+        
+        // Render Score Optimum (if any models exist, score exists)
+        predictedScoreDisplay.classList.remove('hidden');
+        predictedScoreDisplay.innerHTML = '';
+        displayGlobalOptimum('score', varyingFactors, predictedScoreDisplay, isOptimDesign);
+
+        // Render Individual Optimums
+        if (hasYieldModels) {
+            predictedYieldDisplay.classList.remove('hidden');
+            displayGlobalOptimum('yield', varyingFactors, predictedYieldDisplay, isOptimDesign);
+        }
+        if (hasSelecModels) {
+            predictedSelectivityDisplay.classList.remove('hidden');
+            displayGlobalOptimum('selectivity', varyingFactors, predictedSelectivityDisplay, isOptimDesign);
+        }
     }
+
 }
 
 // ─── 2D Contour Plot Renderer ─────────────────────────────────────────────────
