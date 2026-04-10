@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
 
-@media print {
+        @media print {
     body {
         background: white;
     }
@@ -19,10 +19,21 @@
         border: 1px solid #ddd;
         break-inside: avoid;
     }
-    button, input {
+    /* Hide buttons, sliders, and file uploads, but keep text inputs */
+    button, input[type="range"], input[type="file"] {
         display: none !important;
     }
+    /* correction, erreur dans v14, le 10 avril 2026 */
+    #experiments-table input {
+        border: none !important;
+        background: transparent !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        color: black !important;
+        width: auto !important;
+    }
 }
+
 
         body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
         .card { background-color: white; border-radius: 0.75rem; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1); padding: 1.5rem; }
@@ -140,7 +151,7 @@
 <div class="h-10 w-full"></div>
 
 <footer class="fixed bottom-0 left-0 w-full bg-[#f8fafc] border-t border-slate-200 py-3 text-center text-xs text-slate-400 z-0">
-    <p>Version 14.0, updated 9 april 2026, NitaD & MCS Univ Paris-Saclay.</p>
+    <p>Version 14.1, updated 10 april 2026, NitaD & MCS Univ Paris-Saclay.</p>
 </footer>
 
 
