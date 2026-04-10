@@ -40,7 +40,7 @@
     </style>
 
 </head>
-<body class="font-sans text-slate-800 bg-slate-50 antialiased pb-20">
+<body class="font-sans text-slate-800 bg-slate-50 antialiased pb-8">
 
     <header class="bg-slate-900 text-white shadow-md border-b border-sci-900">
         <div class="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex items-center gap-4">
@@ -180,23 +180,19 @@
             </div>
 
         </div>
+
+        
     </div>
 
-    <footer class="text-center py-6 mt-8 border-t border-slate-200">
-        <p id="creationDateTime" class="text-xs text-slate-400 font-mono">Microreactor Experiment Planner | Scherrmann Lab</p>
-    </footer>
+   
+<footer class="fixed bottom-0 w-full bg-white border-t border-slate-200 py-2 text-center z-40 no-print">
+    <p class="text-[10px] text-slate-400 font-mono uppercase tracking-widest">MultiPass v14.0 - April 10th, 2026 - NitaD & MCS Univ Paris-Saclay</p>
+</footer>
+
 
 
     <script defer>
-        function setVersionInfoInFooter() {
-            const footerElement = document.getElementById('creationDateTime');
-            if (footerElement) {
-                 const staticVersion = "20260410_11h42"; // Timestamp of this script's creation
-                 footerElement.textContent = `Microreactor Experiment Planner - MultiPASS | Scherrmann Lab | Version: ${staticVersion}`;
-            }
-        }
-        setVersionInfoInFooter(); // Call on script load
-
+      
         function getFormattedDateTimeForFileName() { 
             const now = new Date();
             return `${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}_${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}${now.getSeconds().toString().padStart(2, '0')}`;
