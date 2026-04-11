@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Experiment Data Analyzer</title>
     <link href="./dist/output.css" rel="stylesheet">
-    
+
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     
@@ -137,7 +137,7 @@
             <div class="card overflow-x-auto">
                 <div class="flex justify-between items-center mb-4">
                     <h2 class="text-lg font-semibold text-slate-800">Experiment Matrix</h2>
-                    <button id="add-row-btn" class="text-xs bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium py-1.5 px-3 rounded shadow-sm transition-colors">
+                    <button id="add-row-btn" class="text-xs bg-blue-100 border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium py-1.5 px-3 rounded shadow-sm transition-colors">
                         + Add Row
                     </button>
                 </div>
@@ -199,12 +199,12 @@
 </div>
 
 <footer class="fixed bottom-0 w-full bg-white border-t border-slate-200 py-2 text-center z-40 no-print">
-    <p class="text-[10px] text-slate-400 font-mono uppercase tracking-widest">v14.2 - April 10th, 2026 - NitaD & MCS Univ Paris-Saclay</p>
+    <p class="text-[10px] text-slate-400 font-mono uppercase tracking-widest">v14.3 - April 11th, 2026 - NitaD & MCS Univ Paris-Saclay</p>
 </footer>
 
 
 <script>
-// ─── DOM References ───────────────────────────────────────────────────────────
+// refs
 const fileInput               = document.getElementById('json-file-input');
 const fileNameEl              = document.getElementById('file-name');
 const uploadSection           = document.getElementById('upload-section');
@@ -275,7 +275,7 @@ function startManualMode() {
 
 let experimentData = [], factorKeys = [];
 
-// ─── Event Listeners
+// events
 fileInput.addEventListener('change', (e) => processFile(e.target.files[0]));
 fileUploadLabel.addEventListener('dragover',  (e) => { e.preventDefault(); e.stopPropagation(); fileUploadLabel.classList.add('bg-slate-100'); });
 fileUploadLabel.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); fileUploadLabel.classList.remove('bg-slate-100'); });
@@ -436,7 +436,7 @@ tableBody.addEventListener('click', (e) => {
     }
 });
 
-//  Matrix 
+//  Matrice
 const matrix = {
     multiply: (a, b) => a.map((r, i) => b[0].map((_, j) => r.reduce((s, e, k) => s + e * b[k][j], 0))),
     transpose: a => a[0].map((_, i) => a.map(r => r[i])),
@@ -507,12 +507,9 @@ function getResponseValue(exp, key) {
     return exp[key];                          // yield or selectivity (may be null)
 }
 
-// Factor Model for Contour Plots 
+// fit a quadratic ou lineaire, dans -1 à 1
 /*
- * buildModel2F:
- *  Fits a quadratic or linear RSM model for one pair of factors, in coded space.
- *  Returns { coeffs[6], xMin, xMax, yMin, yMax } or null.
- *  Term order: [intercept, x, y, xy, x², y²]
+ *  [intercept, x, y, xy, x², y²]
  */
 function buildModel2F(factorXName, factorYName, yKey) {
     const dataPoints = experimentData.filter(d => {
@@ -547,7 +544,6 @@ function buildModel2F(factorXName, factorYName, yKey) {
 
 // Full N-Factor Model with Statistics 
 
-// ─── Full N-Factor Model with Statistics (§7, §8) ─────────────────────────────
 function buildModelWithStats(varyingFactors, yKey, isOptimDesign, useCoded = true) {
     const dataPoints = experimentData.filter(d => {
         const rv = getResponseValue(d, yKey);
@@ -576,7 +572,7 @@ function buildModelWithStats(varyingFactors, yKey, isOptimDesign, useCoded = tru
     const p = termNames.length;
     if (dataPoints.length < p) return null; 
 
-    // ── Design matrix X ──────────────────────────────────────────────────
+    // X
     const Xmat = dataPoints.map(dp => {
         const rowValues = activeFacs.map(f => 
             useCoded ? codeValue(dp.settings[f], bounds[f].min, bounds[f].max) : dp.settings[f]
@@ -638,7 +634,7 @@ function buildModelWithStats(varyingFactors, yKey, isOptimDesign, useCoded = tru
 }
 
 
-// ─── Render Statistics Table ──────────────────────────────────────────────────
+// stats
 function renderModelStatsTable(stats, responseName, containerId) {
     const container = document.getElementById(containerId);
     if (!container) return;
@@ -687,9 +683,6 @@ function renderModelStatsTable(stats, responseName, containerId) {
         <p class="text-xs text-slate-500 mb-4">Coefficients are in <strong>actual units</strong>. &nbsp;95% CI uses t = 1.96. &nbsp;<strong>Bold</strong> rows have CIs excluding zero.</p>
         <div class="overflow-x-auto mb-4">
 
-
-
-
             <table class="w-full text-sm text-left stats-coeff-table">
                 <thead class="text-xs text-slate-600 uppercase bg-white bg-opacity-60">
                     <tr>
@@ -709,7 +702,7 @@ function renderModelStatsTable(stats, responseName, containerId) {
     </div>`;
 }
 
-// ─── Predicted Optimum – 2-factor grid search ─────────────────────────────────
+// grid search
 function findPredictedOptimum2F(model, responseName) {
     const { coeffs, xMin, xMax, yMin, yMax } = model;
     const predict = (xc, yc) =>
@@ -729,12 +722,7 @@ function findPredictedOptimum2F(model, responseName) {
     return { x: uncodeValue(best.xc, xMin, xMax), y: uncodeValue(best.yc, yMin, yMax), z: capped, originalZ: best.z };
 }
 
-// ─── Predicted Optimum – N-factor random walk (§9) ───────────────────────────
-/*
- * findOptimumRandomWalk:
- *  Coarse grid search to seed, then iterative random-walk refinement.
- *  Operates entirely in coded space [-1,1]^k.
- */
+// N factors, random walk
 function findOptimumRandomWalk(varyingFactors, yKey, isOptimDesign) {
     const stats = buildModelWithStats(varyingFactors, yKey, isOptimDesign);
     if (!stats) return null;
@@ -821,8 +809,7 @@ function predictResponseAt(params, varyingFactors, yKey, isOptimDesign) {
 }
 
 
-
-//  Global Optimum Display, considers the relative weight
+//  optimisation, with relative weight
 function displayGlobalOptimum(responseName, varyingFactors, containerElement, isOptimDesign) {
     if (varyingFactors.length < 2) return;
     const result = findOptimumRandomWalk(varyingFactors, responseName, isOptimDesign);
@@ -907,7 +894,7 @@ function updateAdvancedVisualizations() {
     const hasScore       = experimentData.some(d => d.yield !== null || d.selectivity !== null);
 
 
-    // ── Build N-factor stats models ───────────────────────────────────────
+    // N stats, un peu étrange ici, à vérifier
     // Pass 'false' to evaluate coefficients and standard errors in actual parameter units
     const yieldStats = hasYield       ? buildModelWithStats(varyingFactors, 'yield',       isOptimDesign, false) : null;
     const selecStats = hasSelectivity ? buildModelWithStats(varyingFactors, 'selectivity', isOptimDesign, false) : null;
@@ -925,8 +912,7 @@ if (yieldStats || selecStats || scoreStats) {
     modelStatsSection.classList.add('hidden');
 }
 
-
-    // ── 2-factor contour plots ─────────────────────────────────────────────
+    // contour plots, 
     predictedYieldDisplay.innerHTML       = `<h3 class="font-semibold text-green-800 mb-2">Predicted Optimums (Yield)</h3>`;
     predictedSelectivityDisplay.innerHTML = `<h3 class="font-semibold text-blue-800 mb-2">Predicted Optimums (Selectivity)</h3>`;
 
@@ -1001,12 +987,7 @@ if (yieldStats || selecStats || scoreStats) {
 
 }
 
-// ─── 2D Contour Plot Renderer ─────────────────────────────────────────────────
-/*
- * draw2DContourPlot:
- *  Heatmap canvas plot. Model coefficients are in coded space, so factor values
- *  are encoded before prediction, but axes are labeled in real (uncoded) units.
- */
+// 2D Contour Plot 
 function draw2DContourPlot(canvasId, model, factorXName, factorYName, responseName, optimum) {
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
