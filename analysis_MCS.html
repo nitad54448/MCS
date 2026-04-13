@@ -199,7 +199,7 @@
 </div>
 
 <footer class="fixed bottom-0 w-full bg-white border-t border-slate-200 py-2 text-center z-40 no-print">
-    <p class="text-[10px] text-slate-400 font-mono uppercase tracking-widest">v14.3 - April 11th, 2026 - NitaD & MCS Univ Paris-Saclay</p>
+    <p class="text-[10px] text-slate-400 font-mono uppercase tracking-widest">v14.4 - April 13th, 2026 - NitaD & MCS Univ Paris-Saclay</p>
 </footer>
 
 
@@ -283,6 +283,25 @@ fileUploadLabel.addEventListener('drop',      (e) => { e.preventDefault(); e.sto
 yieldWeightSlider.addEventListener('input', handleSliderChange);
 selectivityWeightSlider.addEventListener('input', handleSliderChange);
 tableBody.addEventListener('input', handleTableInputChange);
+
+tableBody.addEventListener('change', (e) => {
+    if (!e.target.hasAttribute('data-metric')) return;
+    const rawValue = e.target.value.replace(',', '.');
+    let value = (rawValue === '' || isNaN(parseFloat(rawValue))) ? null : parseFloat(rawValue);
+    
+    if (value !== null) {
+        const metric = e.target.dataset.metric;
+        if (metric === 'yield' || metric === 'selectivity') {
+            e.target.value = Math.max(0, Math.min(100, value));
+        } else if (metric === 'setting') {
+            const factor = e.target.dataset.factor.toLowerCase();
+            if ((factor.includes('time') || factor.includes('ratio')) && value <= 0) {
+                e.target.value = 0.01;
+            }
+        }
+    }
+});
+
 alertClose.addEventListener('click', () => alertModal.style.display = 'none');
 
 function customAlert(msg) { alertMessage.textContent = msg; alertModal.style.display = 'flex'; }
@@ -366,6 +385,8 @@ function renderTable(factors) {
 }
 
 //depuis la version 14.2, limite à 100%
+//erreur dans input yield avant 14.4
+
 function handleTableInputChange(e) {
     if (!e.target.hasAttribute('data-metric')) return;
     const rowIndex = e.target.closest('tr').dataset.index;
@@ -374,19 +395,14 @@ function handleTableInputChange(e) {
     let value      = (rawValue === '' || isNaN(parseFloat(rawValue))) ? null : parseFloat(rawValue);
 
     if (value !== null) {
-        // 1. Clamp Yield and Selectivity to [0, 100]
+        // Clamp values for the data model, but don't force the visual update yet
         if (metric === 'yield' || metric === 'selectivity') {
             value = Math.max(0, Math.min(100, value));
-            e.target.value = value; // Update the input field visually
         } 
-        // 2. Clamp Time and Molar Ratio to strictly positive values (> 0)
         else if (metric === 'setting') {
             const factor = e.target.dataset.factor.toLowerCase();
             if (factor.includes('time') || factor.includes('ratio')) {
-                if (value <= 0) {
-                    value = 0.01; // Enforce a >0 minimum
-                    e.target.value = value;
-                }
+                if (value <= 0) value = 0.01;
             }
         }
     }
