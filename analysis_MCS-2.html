@@ -6,7 +6,8 @@
     <title>Experiment Data Analyzer</title>
     <link href="./dist/output.css" rel="stylesheet">
 
-    <script src="[https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js](https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js)"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -241,28 +242,65 @@ const printPdfBtn = document.getElementById('print-pdf-btn');
 document.getElementById('print-pdf-btn').addEventListener('click', generatePDF);
 
 function generatePDF() {
-    // Select the main container that holds the report
-    const element = document.getElementById('main-content');
+    // Initialize jsPDF
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'landscape' }); // Landscape fits data tables better
+
+    // 1. Add Report Header
+    doc.setFontSize(18);
+    doc.setTextColor(15, 23, 42); // slate-900
+    doc.text("Experiment Data Analyzer Report", 14, 20);
+
+    // 2. Add Measured Optimums Summary
+    doc.setFontSize(11);
+    doc.setTextColor(71, 85, 105); // slate-500
     
-    // Temporarily hide elements you don't want in the PDF
-    const noPrintElements = document.querySelectorAll('.no-print, button, input[type="file"]');
-    noPrintElements.forEach(el => el.style.display = 'none');
+    const yieldText = `Peak Yield: ${bestYieldEl.textContent} ${bestYieldExpEl.textContent}`;
+    const selecText = `Peak Selectivity: ${bestSelectivityEl.textContent} ${bestSelectivityExpEl.textContent}`;
+    const scoreText = `Best Score: ${bestOverallEl.textContent} ${bestOverallExpEl.textContent}`;
+    
+    doc.text(yieldText, 14, 30);
+    doc.text(selecText, 14, 37);
+    doc.text(scoreText, 14, 44);
 
-    // Configure the PDF settings
-    const opt = {
-        margin:       10,
-        filename:     'Experiment_Data_Report.pdf',
-        image:        { type: 'jpeg', quality: 0.98 },
-        html2canvas:  { scale: 2, useCORS: true, windowWidth: 1200 }, // Forces a consistent width layout
-        jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
-    };
-
-    // Generate the PDF
-    html2pdf().set(opt).from(element).save().then(() => {
-        // Restore the hidden elements after generation
-        noPrintElements.forEach(el => el.style.display = '');
+    // 3. Construct Table Data straight from the Javascript Array (avoids HTML input extraction issues)
+    const tableHead = [['Exp #', ...factorKeys, 'Yield (%)', 'Selectivity (%)', 'Score']];
+    
+    const tableBody = experimentData.map(exp => {
+        return [
+            exp.id,
+            ...factorKeys.map(k => exp.settings[k] !== null && exp.settings[k] !== '' ? exp.settings[k] : '-'),
+            exp.yield !== null ? exp.yield : '-',
+            exp.selectivity !== null ? exp.selectivity : '-',
+            exp.score ? exp.score.toFixed(3) : '-'
+        ];
     });
+
+    // 4. Generate the Table
+    doc.autoTable({
+        startY: 52,
+        head: tableHead,
+        body: tableBody,
+        theme: 'grid',
+        headStyles: { 
+            fillColor: [14, 165, 233], // sci-500
+            textColor: 255,
+            fontStyle: 'bold'
+        },
+        styles: { 
+            fontSize: 9, 
+            halign: 'center',
+            cellPadding: 3
+        },
+        alternateRowStyles: {
+            fillColor: [248, 250, 252] // slate-50
+        }
+    });
+
+    // 5. Save the vector PDF
+    doc.save('Experiment_Data_Report.pdf');
 }
+
 
 document.getElementById('manual-start-btn').addEventListener('click', startManualMode);
 
