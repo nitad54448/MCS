@@ -522,7 +522,8 @@ const matrix = {
             let p = i;
             while (p < n && C[p][i] === 0) p++;
             
-            if (Math.abs(C[p][i]) < 1e-12) return null;
+            // FIX: Prevent 'undefined' crash by checking if p is out of bounds
+            if (p >= n || Math.abs(C[p][i]) < 1e-12) return null;
 
             [C[i], C[p]] = [C[p], C[i]];
             const d = C[i][i];
@@ -533,6 +534,7 @@ const matrix = {
         }
         return C.map(r => r.slice(n));
     }
+
 };
 
 //  Factor Coding 
