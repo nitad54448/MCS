@@ -789,12 +789,12 @@ video {
   width: 100%;
 }
 
-.max-w-5xl {
-  max-width: 64rem;
-}
-
 .max-w-7xl {
   max-width: 80rem;
+}
+
+.max-w-\[95\%\] {
+  max-width: 95%;
 }
 
 .max-w-screen-2xl {
@@ -845,6 +845,10 @@ video {
 
 .items-center {
   align-items: center;
+}
+
+.justify-end {
+  justify-content: flex-end;
 }
 
 .justify-center {

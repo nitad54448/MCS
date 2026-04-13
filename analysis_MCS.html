@@ -6,36 +6,14 @@
     <title>Experiment Data Analyzer</title>
     <link href="./dist/output.css" rel="stylesheet">
 
-    <script src="[https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js](https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js)"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
     
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: {
-                        sans: ['Inter', 'sans-serif'],
-                        mono: ['JetBrains Mono', 'monospace'],
-                    },
-                    colors: {
-                        sci: {
-                            50: '#f0f9ff',
-                            100: '#e0f2fe',
-                            200: '#bae6fd',
-                            500: '#0ea5e9',
-                            600: '#0284c7',
-                            800: '#075985',
-                            900: '#0c4a6e',
-                        }
-                    }
-                }
-            }
-        }
-    </script>
     <style>
         @media print {
             body { background: white; }
@@ -80,7 +58,7 @@
 
     <div id="main-content" class="space-y-6">
 
-        <div id="upload-section" class="card max-w-[80%] mx-auto mt-12">
+        <div id="upload-section" class="card max-w-[95%] mx-auto mt-12">
             <h2 class="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
                 <svg class="w-5 h-5 text-sci-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
                 Import Data Plan
@@ -136,20 +114,26 @@
                 </div>
             </div>
 
+
+
             <div class="card overflow-x-auto">
-                <div class="flex justify-between items-center mb-4">
-                    <h2 class="text-lg font-semibold text-slate-800">Experiment Matrix</h2>
-                    <button id="add-row-btn" class="text-xs bg-blue-100 border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium py-1.5 px-3 rounded shadow-sm transition-colors">
-                        + Add Row
-                    </button>
-                </div>
-                <div class="border border-slate-200 rounded-lg overflow-hidden">
-                    <table id="experiments-table" class="w-full text-sm text-left text-slate-600">
-                        <thead class="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-200 font-semibold"></thead>
-                        <tbody class="divide-y divide-slate-100 font-mono text-sm"></tbody>
-                    </table>
-                </div>
-            </div>
+    <div class="flex items-center mb-4">
+        <h2 class="text-lg font-semibold text-slate-800">Experiment Matrix</h2>
+    </div>
+    
+    <div class="border border-slate-200 rounded-lg overflow-hidden">
+        <table id="experiments-table" class="w-full text-sm text-left text-slate-600">
+            <thead class="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-200 font-semibold"></thead>
+            <tbody class="divide-y divide-slate-100 font-mono text-sm"></tbody>
+        </table>
+    </div>
+    
+<div class="flex justify-end w-full mt-4">
+    <button id="add-row-btn" class="text-xs bg-blue-100 border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium py-1.5 px-3 rounded shadow-sm transition-colors">
+        + Add Row
+    </button>
+</div>
+</div>
 
 
             <div id="predicted-optima-card" class="card hidden">
@@ -201,7 +185,7 @@
 </div>
 
 <footer class="fixed bottom-0 w-full bg-white border-t border-slate-200 py-2 text-center z-40 no-print">
-    <p class="text-[10px] text-slate-400 font-mono uppercase tracking-widest">v14.4 - April 13th, 2026 - NitaD & MCS Univ Paris-Saclay</p>
+    <p class="text-[10px] text-slate-400 font-mono uppercase tracking-widest">v14.5 - April 13th, 2026 - NitaD & MCS Univ Paris-Saclay</p>
 </footer>
 
 
@@ -240,29 +224,114 @@ const printPdfBtn = document.getElementById('print-pdf-btn');
 
 document.getElementById('print-pdf-btn').addEventListener('click', generatePDF);
 
+
 function generatePDF() {
-    // Select the main container that holds the report
-    const element = document.getElementById('main-content');
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'landscape' });
+
+    // Generate timestamp formats
+    const now = new Date();
+    const pad = (n) => n.toString().padStart(2, '0');
+    const fileTimestamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}h${pad(now.getMinutes())}m${pad(now.getSeconds())}s`;
+
+    // 1. Report Header & Summary
+    doc.setFontSize(18);
+    doc.setTextColor(15, 23, 42);
+    doc.text("Experiment Data Analyzer Report", 14, 20);
     
-    // Temporarily hide elements you don't want in the PDF
-    const noPrintElements = document.querySelectorAll('.no-print, button, input[type="file"]');
-    noPrintElements.forEach(el => el.style.display = 'none');
+    // Add Timestamp and Link
+    doc.setFontSize(9);
+    doc.setTextColor(100, 116, 139);
+    doc.text(`Generated: ${now.toLocaleString()}`, 14, 26);
+    doc.text(`Source: ${window.location.href}`, 14, 31);
 
-    // Configure the PDF settings
-    const opt = {
-        margin:       10,
-        filename:     'Experiment_Data_Report.pdf',
-        image:        { type: 'jpeg', quality: 0.98 },
-        html2canvas:  { scale: 2, useCORS: true, windowWidth: 1200 }, // Forces a consistent width layout
-        jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
-    };
+    // Shift the optimums down slightly
+    doc.setFontSize(11);
+    doc.setTextColor(71, 85, 105);
+    doc.text(`Peak Yield: ${bestYieldEl.textContent} ${bestYieldExpEl.textContent}`, 14, 41);
+    doc.text(`Peak Selectivity: ${bestSelectivityEl.textContent} ${bestSelectivityExpEl.textContent}`, 14, 48);
+    doc.text(`Best Score: ${bestOverallEl.textContent} ${bestOverallExpEl.textContent}`, 14, 55);
 
-    // Generate the PDF
-    html2pdf().set(opt).from(element).save().then(() => {
-        // Restore the hidden elements after generation
-        noPrintElements.forEach(el => el.style.display = '');
+    // 2. Main Data Table
+    const tableHead = [['Exp #', ...factorKeys, 'Yield (%)', 'Selectivity (%)', 'Score']];
+    const tableBody = experimentData.map(exp => [
+        exp.id,
+        ...factorKeys.map(k => exp.settings[k] !== null && exp.settings[k] !== '' ? exp.settings[k] : '-'),
+        exp.yield !== null ? exp.yield : '-',
+        exp.selectivity !== null ? exp.selectivity : '-',
+        exp.score ? exp.score.toFixed(3) : '-'
+    ]);
+
+    doc.autoTable({
+        startY: 63, head: tableHead, body: tableBody, theme: 'grid',
+        headStyles: { fillColor: [14, 165, 233], textColor: 255, fontStyle: 'bold' },
+        styles: { fontSize: 9, halign: 'center', cellPadding: 3 }
     });
+
+    // 3. Add Model Statistics Pages
+    const statTables = document.querySelectorAll('.stats-coeff-table, .stats-summary-table');
+    if (statTables.length > 0) {
+        doc.addPage();
+        doc.setFontSize(16);
+        doc.text("Model Statistics", 14, 20);
+        let currentY = 30;
+        
+        statTables.forEach((table, index) => {
+            // Add a title before coefficient tables
+            if (table.classList.contains('stats-coeff-table')) {
+                const parentTitle = table.closest('.p-5').querySelector('h3').innerText;
+                doc.setFontSize(12);
+                doc.text(parentTitle, 14, currentY);
+                currentY += 5;
+            }
+
+            doc.autoTable({
+                html: table,
+                startY: currentY,
+                theme: 'grid',
+                styles: { fontSize: 8 },
+                margin: { bottom: 20 }
+            });
+            
+            currentY = doc.lastAutoTable.finalY + 10;
+            if (currentY > 170 && index < statTables.length - 1) { 
+                doc.addPage(); 
+                currentY = 20; 
+            }
+        });
+    }
+
+    // 4. Add Contour Plots Pages
+    const canvases = document.querySelectorAll('#contour-plots-container canvas');
+    if (canvases.length > 0) {
+        doc.addPage();
+        doc.setFontSize(16);
+        doc.text("Response Surface Plots", 14, 20);
+        
+        let yOffset = 30;
+        let xOffset = 14;
+        
+        canvases.forEach((canvas, index) => {
+            const imgData = canvas.toDataURL('image/jpeg', 1.0);
+            doc.addImage(imgData, 'JPEG', xOffset, yOffset, 100, 100);
+            
+            xOffset += 110; // Move right for the next image
+            if (xOffset > 200) { 
+                xOffset = 14; 
+                yOffset += 110; // Move down to next row
+            }
+            // If page is full and there are more images, add a new page
+            if (yOffset > 100 && index < canvases.length - 1 && xOffset === 14) {
+                doc.addPage();
+                yOffset = 30;
+            }
+        });
+    }
+
+    // 5. Save with the new timestamped filename
+    doc.save(`Experimental_Report_${fileTimestamp}.pdf`);
 }
+
 
 document.getElementById('manual-start-btn').addEventListener('click', startManualMode);
 
@@ -484,7 +553,8 @@ const matrix = {
             let p = i;
             while (p < n && C[p][i] === 0) p++;
             
-            if (Math.abs(C[p][i]) < 1e-12) return null;
+            // FIX: Prevent 'undefined' crash by checking if p is out of bounds
+            if (p >= n || Math.abs(C[p][i]) < 1e-12) return null;
 
             [C[i], C[p]] = [C[p], C[i]];
             const d = C[i][i];
@@ -495,6 +565,7 @@ const matrix = {
         }
         return C.map(r => r.slice(n));
     }
+
 };
 
 //  Factor Coding 
@@ -1033,6 +1104,12 @@ function draw2DContourPlot(canvasId, model, factorXName, factorYName, responseNa
     const padding = 45, width = 350, height = 350;
     const plotW = width - padding * 2, plotH = height - padding * 2;
     canvas.width = width; canvas.height = height;
+
+ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, width, height);
+
+
+
 
     const { coeffs, xMin, xMax, yMin, yMax } = model;
 
