@@ -2,15 +2,15 @@
 
 # Scherrmann Lab Microreactor DoE Suite
 
-Welcome to the **Scherrmann Lab Microreactor DoE (Design of Experiments) Suite**. This repository contains two interconnected HTML/JavaScript applications designed to plan, execute, and analyze continuous-flow microreactor experiments. 
+Welcome to the **Scherrmann Lab Microreactor DoE (Design of Experiments) Suite**. This repository contains HTML/JavaScript applications designed to plan or analyze continuous-flow microreactor experiments. 
 
-These tools operate entirely client-side in the browser, requiring no external server or backend.
+This tool operates entirely client-side in the browser, requiring no external server or backend.
 
 ---
 
-## 1: Microreactor Experiment Planner (`plan_MCS_v13.html`)
+## Microreactor Experiment Planner (`plan_MCS.html`)
 
-The Experiment Planner generates highly specific, mathematically rigorous JSON experiment plans based on user-defined chemical and physical parameters. It calculates precise pump flow rates, slug tracking, collection times, and syringe refill schedules. The web interface includes a dynamic version number in its footer (e.g., Version: 20250606_094500) reflecting the date and time the script was loaded in your browser. This specific documentation aligns with Document Version 2025-06-26.
+The Experiment Planner generates highly specific, mathematically rigorous JSON experiment plans based on user-defined chemical and physical parameters. It calculates precise pump flow rates, slug tracking, collection times, and syringe refill schedules. The web interface includes a dynamic version number in its footer (e.g., Version: 20250606_094500) reflecting the date and time the script was loaded in your browser.
 
 This JSON file is used in our lab in a specific system programmed in Labview.
 
@@ -25,7 +25,8 @@ This section defines the physical setup of your microreactor system and general 
 * **Dead Volume Reactor to Collector V2 (uL):** The volume between the reactor outlet and the fraction collector. The reactant slug must transit this volume before being collected. Default: 500.
 * **Collect Volume per Fraction (uL):** Target volume collected in each individual fraction tube. Default: 100.
 * **Total Reactant Mixture Pumped (Slug Volume) (uL):** Total volume of the formulated A+B+C_mixed solution actively pumped during Step 1. This entire volume is intended to pass through the reactor for the defined residence time. Default: 500.
-* **Diffusion Coefficient (Cd):** A dimensionless factor representing the fraction of the Slug Volume to collect as additional shoulders (before and after) to account for axial dispersion/diffusion. Target collection = SlugVolume_Input * (1 + 2 * Cd). Default: 0.1.
+* **Molecular Diffusion Coeff (m²/s):** The intrinsic diffusion coefficient of the primary molecule ($D_m$). Used to rigorously calculate Taylor-Aris dispersion. Default: 1e-9.
+* **Tube Inner Radius (mm):** Internal radius of the tubing ($r$), required for fluid velocity and radial mixing calculations. Default: 0.25.
 * **Post-Collection Flush Time (min):** Duration to flush the system with pure Solvent C after collection. Default: 5.
 * **Max Syringe Volume Pump A / B (uL):** Maximum usable volume of the respective syringes. Default: 10000.
 * **Refill Pause Duration (min):** Time allocated for manual syringe refills if needed. Default: 1440.
@@ -46,18 +47,49 @@ Defines the factor ranges for the chosen experimental design:
 ### II. Core Calculations & Logic
 
 **A. Per Experiment Setup**
-* **Total System Flow Rate (Q_total):** The constant volumetric flow rate for all dynamic operations. Q_total = VR / RT_current.
-* **Flow Rates for Slug Formation (Step 1):** Q_{A+B} = Q_total * AFF_current, and Q_{C_mixed} = Q_total * (1 - AFF_current). To formulate the required mixture from stock solutions A and B, the volumetric flow depends on the target molar ratio R_target: Q_A = Q_{active} / (1 + R_target * ([A] / [B])), and Q_B = Q_{active} - Q_A.
-* **Concentrations in Formulated Mixture:** C_{A,formulated} = (Q_A * C_{A_stock}) / (Q_A + Q_B + Q_{C_mixed}).
-* **Slug Volume for Reaction:** Set directly from the input. This entire volume passes through the reactor and is the basis for collection calculations.
+* **Total System Flow Rate ($Q_{total}$):** The constant volumetric flow rate for all dynamic operations, dependent on reactor volume ($V_R$) and residence time ($RT$).
+  
+  $$Q_{total} = \frac{V_R}{RT}$$
+
+* **Flow Rates for Slug Formation (Step 1):** The active reactant flow ($Q_{active}$) and mixed solvent flow ($Q_{C\_mixed}$) are calculated using the Active Flow Fraction (AFF):
+  
+  $$Q_{active} = Q_{total} \times \text{AFF}$$
+  
+  $$Q_{C\_mixed} = Q_{total} \times (1 - \text{AFF})$$
+  
+  To formulate the required mixture from stock solutions A and B, the volumetric flow depends on the target molar ratio ($R_{target}$):
+  
+  $$Q_A = \frac{Q_{active}}{1 + R_{target} \times \left(\frac{[A]}{[B]}\right)}$$
+  
+  $$Q_B = Q_{active} - Q_A$$
+
+* **Concentrations in Formulated Mixture:**
+
+   $$C_{A,formulated} = \frac{Q_A \times [A]_{stock}}{Q_{total}}$$
+
+* **Taylor-Aris Dispersion:** The volume of the slug's dispersed front and back tails ($V_{disp}$) is calculated dynamically using the total system transit time ($t$) and the average fluid velocity ($u$). Total time depends on all system volumes ($V_1$, $V_R$, $V_2$):
+  
+  $$t = \frac{V_1 + V_R + V_2}{Q_{total}}$$
+  
+  The effective dispersion coefficient ($D_{eff}$) is calculated as:
+  
+  $$D_{eff} = D_m + \frac{u^2 r^2}{48 D_m}$$
+  
+  The variance in length ($\sigma_x$) and resulting dispersed volume (accounting for a ~95% collection boundary) is:
+  
+  $$\sigma_x = \sqrt{2 \cdot D_{eff} \cdot t}$$
+  
+  $$V_{disp} = \pi r^2 (2\sigma_x)$$
+  
+  *Note: Target collection volume = Slug Volume Input + $V_{disp\_front} + V_{disp\_back}$*
 
 **B. Syringe Refill Logic**
 Calculates the total volume of Sample A and Sample B needed to form the slug. If the volume needed exceeds the remaining syringe volume, a refill is triggered, and a pause step is inserted at the beginning of that experiment.
 
 **C. Experimental Step Sequence**
 1.  **Refill Pause (Optional):** Duration based on user input.
-2.  **Step 1: Form Reactant Slug:** Pumps A, B, and C_mixed dispense the slug volume at Q_total. At the end of Step 1, the V1 dead volume contains the trailing portion of the mixture, while the leading portion has entered the reactor VR. Warnings are triggered if the reactor is too small to hold the slug or if the slug is entirely trapped in V1.
-3.  **Step 2: Push Slug with Solvent C, React, Collect, Flush:** Pure Solvent C (pumpC) pushes the slug at Q_total. Includes complete slug loading, reaction transit time, transit through V2, and fraction collection based on target volume. Finally, the system undergoes a post-collection flush.
+2.  **Step 1: Form Reactant Slug:** Pumps A, B, and C_mixed dispense the slug volume at $Q_{total}$. At the end of Step 1, the V1 dead volume contains the trailing portion of the mixture, while the leading portion has entered the reactor VR. Warnings are triggered if the reactor is too small to hold the slug or if the slug is entirely trapped in V1.
+3.  **Step 2: Push Slug with Solvent C, React, Collect, Flush:** Pure Solvent C (pumpC) pushes the slug at $Q_{total}$. Includes complete slug loading, reaction transit time, transit through V2, and fraction collection based on target volume. Finally, the system undergoes a post-collection flush.
 
 ### III. Experimental Design (DoE) Mathematics & Statistics
 
@@ -91,10 +123,10 @@ The heavily structured `.json` output file is an array of experiment objects con
 * The "Total Reactant Mixture Pumped (Slug Volume)" is the key volume that defines your scientific experiment in terms of what passes through the reactor.
 * V1 influences the initial distribution of the slug but not the total volume of A, B, and C_mixed reported as "pumped in Step 1".
 * Pay close attention to warnings regarding slug size relative to V1 and VR, as they indicate if the physical assumptions of the model are met.
-* The residence time RT_current is defined as VR / Q_total, representing the time for one reactor volume to be displaced.
+* The residence time RT is defined as $V_R / Q_{total}$, representing the time for one reactor volume to be displaced.
 
----
----
+
+
 
 ## 2: Experiment Data Analyzer (`analysis_MCS.html`)
 
