@@ -70,13 +70,13 @@
                         <i class="fas fa-cog text-sci-500"></i> Apparatus Parameters
                     </h2>
                     
-                    <div class="input-row"><label class="form-label" for="reactorVolume">Reactor Volume VR (µL):</label><input class="form-control sm:w-32" type="number" id="reactorVolume" value="500" min="1"></div>
+                    <div class="input-row"><label class="form-label" for="reactorVolume">Reactor Volume VR (µL):</label><input class="form-control sm:w-32" type="number" id="reactorVolume" value="442" min="1"></div>
                     <div class="input-row"><label class="form-label" for="concA">Concentration of Sample A (mM):</label><input class="form-control sm:w-32" type="number" id="concA" value="100" min="0"></div>
                     <div class="input-row"><label class="form-label" for="concB">Concentration of Sample B (mM):</label><input class="form-control sm:w-32" type="number" id="concB" value="100" min="0"></div>
-                    <div class="input-row"><label class="form-label" for="deadVolume1" title="Volume of tubing/mixer before the reactor.">Dead Volume Mixer to Reactor V1 (µL):</label><input class="form-control sm:w-32" type="number" id="deadVolume1" value="62" min="0"></div>
-                    <div class="input-row"><label class="form-label" for="deadVolume2">Dead Volume Reactor to Collector V2 (µL):</label><input class="form-control sm:w-32" type="number" id="deadVolume2" value="500" min="0"></div>
+                    <div class="input-row"><label class="form-label" for="deadVolume1" title="Volume of tubing/mixer before the reactor.">Dead Volume Mixer to Reactor (µL):</label><input class="form-control sm:w-32" type="number" id="deadVolume1" value="62" min="0"></div>
+                    <div class="input-row"><label class="form-label" for="deadVolume2">Dead Volume Reactor to Collection (µL):</label><input class="form-control sm:w-32" type="number" id="deadVolume2" value="495" min="0"></div>
                     <div class="input-row"><label class="form-label" for="collectVolumePerFraction">Collect Volume per Fraction (µL):</label><input class="form-control sm:w-32" type="number" id="collectVolumePerFraction" value="100" min="1"></div>
-                    <div class="input-row"><label class="form-label" for="volumeReactantsSlugInput" title="Total volume intended to pass through the reactor.">Total Reactant Mixture Pumped (Slug Vol) (µL):</label><input class="form-control sm:w-32" type="number" id="volumeReactantsSlugInput" value="500" min="1"></div>
+                    <div class="input-row"><label class="form-label" for="volumeReactantsSlugInput" title="Total volume intended to pass through the reactor.">Total Reactant Mixture Pumped (Slug Vol) (µL):</label><input class="form-control sm:w-32" type="number" id="volumeReactantsSlugInput" value="442" min="1"></div>
                     <div class="input-row"><label class="form-label" for="coeffDiffusion" title="Fraction of the slug to collect as leading/trailing shoulders due to dispersion. Cd ≥ 0.">Axial Dispersion Factor (Cd):</label><input class="form-control sm:w-32" type="number" id="coeffDiffusion" value="0.1" min="0" step="0.01"></div>
                     <div class="input-row"><label class="form-label" for="postCollectionFlushTime">Post-Collection Flush Time (min):</label><input class="form-control sm:w-32" type="number" id="postCollectionFlushTime" value="5" min="0" step="any"></div>
                     <div class="input-row"><label class="form-label" for="maxVolumeA">Max Syringe Volume Pump A (µL):</label><input class="form-control sm:w-32" type="number" id="maxVolumeA" value="10000" min="1"></div>
@@ -188,7 +188,7 @@
     </div>
    
 <footer class="fixed bottom-0 w-full bg-white border-t border-slate-200 py-2 text-center z-40 no-print">
-    <p class="text-[10px] text-slate-400 font-mono uppercase tracking-widest">MultiPass v14.5 - MAY 20th, 2026 - NitaD & MCS Univ Paris-Saclay</p>
+    <p class="text-[10px] text-slate-400 font-mono uppercase tracking-widest">MultiPass v14.5 - 21 MAY 2026 - NitaD & MCS Univ Paris-Saclay</p>
 </footer>
 
     <script defer>
