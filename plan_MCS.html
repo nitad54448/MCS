@@ -77,7 +77,8 @@
                     <div class="input-row"><label class="form-label" for="deadVolume2">Dead Volume Reactor to Collection (µL):</label><input class="form-control sm:w-32" type="number" id="deadVolume2" value="495" min="0"></div>
                     <div class="input-row"><label class="form-label" for="collectVolumePerFraction">Collect Volume per Fraction (µL):</label><input class="form-control sm:w-32" type="number" id="collectVolumePerFraction" value="100" min="1"></div>
                     <div class="input-row"><label class="form-label" for="volumeReactantsSlugInput" title="Total volume intended to pass through the reactor.">Total Reactant Mixture Pumped (Slug Vol) (µL):</label><input class="form-control sm:w-32" type="number" id="volumeReactantsSlugInput" value="442" min="1"></div>
-                    <div class="input-row"><label class="form-label" for="coeffDiffusion" title="Fraction of the slug to collect as leading/trailing shoulders due to dispersion. Cd ≥ 0.">Axial Dispersion Factor (Cd):</label><input class="form-control sm:w-32" type="number" id="coeffDiffusion" value="0.1" min="0" step="0.01"></div>
+                    <div class="input-row"><label class="form-label" for="dmCoeff" title="Molecular Diffusion Coefficient (m²/s)">Molecular Diffusion Coeff (m²/s):</label><input class="form-control sm:w-32" type="number" id="dmCoeff" value="1e-9" step="any"></div>
+                    <div class="input-row"><label class="form-label" for="tubeRadius" title="Inner radius of the tubing (mm)">Tube Inner Radius (mm):</label><input class="form-control sm:w-32" type="number" id="tubeRadius" value="0.25" min="0.01" step="any"></div>
                     <div class="input-row"><label class="form-label" for="postCollectionFlushTime">Post-Collection Flush Time (min):</label><input class="form-control sm:w-32" type="number" id="postCollectionFlushTime" value="5" min="0" step="any"></div>
                     <div class="input-row"><label class="form-label" for="maxVolumeA">Max Syringe Volume Pump A (µL):</label><input class="form-control sm:w-32" type="number" id="maxVolumeA" value="10000" min="1"></div>
                     <div class="input-row"><label class="form-label" for="maxVolumeB">Max Syringe Volume Pump B (µL):</label><input class="form-control sm:w-32" type="number" id="maxVolumeB" value="10000" min="1"></div>
@@ -214,6 +215,32 @@
             return formatted.trim() || "0m";
         }
 
+
+        function calculateDispersionVolume(V_system_uL, Q_total_uL_min, Dm_m2_s, radius_mm) {
+    // Convert to SI units
+    const V_system_m3 = V_system_uL * 1e-9;
+    const Q_total_m3_s = (Q_total_uL_min * 1e-9) / 60;
+    
+    // Total transit time from mixer to collector
+    const t_s = V_system_m3 / Q_total_m3_s; 
+    const r_m = radius_mm * 1e-3;
+
+    // Average fluid velocity (m/s)
+    const u_m_s = Q_total_m3_s / (Math.PI * Math.pow(r_m, 2));
+
+    // Effective dispersion coefficient (Taylor-Aris)
+    const Deff = Dm_m2_s + (Math.pow(u_m_s, 2) * Math.pow(r_m, 2)) / (48 * Dm_m2_s);
+
+    // Variance in length (m)
+    const sigma_x = Math.sqrt(2 * Deff * t_s);
+
+    // Volume of the dispersed tail in uL (using 2*sigma for ~95% collection boundary)
+    const V_disp_uL = (Math.PI * Math.pow(r_m, 2) * (2 * sigma_x)) * 1e9;
+
+    return V_disp_uL;
+}
+
+
     function generateDesignPoints(factors, designType, allWarningsRef) {
         let designPoints = [];
         const varyingFactorsOnly = factors.filter(f => !f.isConstant);
@@ -345,7 +372,8 @@
         const V2_uL = parseFloat(document.getElementById('deadVolume2').value);
         const collectVolumePerFraction_uL = parseFloat(document.getElementById('collectVolumePerFraction').value);
         const V_slug_input_uL = parseFloat(document.getElementById('volumeReactantsSlugInput').value); 
-        const C_diff_from_UI = parseFloat(document.getElementById('coeffDiffusion').value);
+        const Dm_m2_s = parseFloat(document.getElementById('dmCoeff').value);
+        const radius_mm = parseFloat(document.getElementById('tubeRadius').value);
         const postCollectionFlushTime_min_input = parseFloat(document.getElementById('postCollectionFlushTime').value);
         const maxVolumeA_uL = parseFloat(document.getElementById('maxVolumeA').value);
         const maxVolumeB_uL = parseFloat(document.getElementById('maxVolumeB').value);
@@ -380,7 +408,7 @@
         let allWarnings = []; let canGenerateJson = true;
 
         if (isNaN(VR_uL) || isNaN(mM_A) || isNaN(mM_B) || isNaN(V1_uL) || isNaN(V2_uL) || isNaN(collectVolumePerFraction_uL) ||
-            isNaN(V_slug_input_uL) || isNaN(C_diff_from_UI) || isNaN(postCollectionFlushTime_min_input) || 
+            isNaN(V_slug_input_uL) || isNaN(Dm_m2_s) || isNaN(radius_mm) || isNaN(postCollectionFlushTime_min_input) || 
             isNaN(maxVolumeA_uL) || isNaN(maxVolumeB_uL) || isNaN(refillPauseDurationCustom_min) || 
             isNaN(minRT) || isNaN(maxRT) || isNaN(minRatioBA) || isNaN(maxRatioBA) || isNaN(minAFF) || isNaN(maxAFF) ||
             isNaN(minTemp) || isNaN(maxTemp)) {
@@ -392,9 +420,8 @@
         if (V1_uL < 0 || V2_uL < 0) { allWarnings.push("<strong>Input Error:</strong> Dead Volumes (µL) must be non-negative."); canGenerateJson = false; }
         if (maxVolumeA_uL <= 0 || maxVolumeB_uL <= 0) { allWarnings.push("<strong>Input Error:</strong> Max Syringe Volumes (µL) must be positive."); canGenerateJson = false; }
         if (refillPauseDurationCustom_min < 0) { allWarnings.push("<strong>Input Error:</strong> Refill Pause Duration (min) must be non-negative."); canGenerateJson = false; }
-        if (C_diff_from_UI < 0) { allWarnings.push("<strong>Input Error:</strong> Dispersion Coefficient (Cd) must be non-negative."); canGenerateJson = false; }
+        if (Dm_m2_s <= 0 || radius_mm <= 0) { allWarnings.push("<strong>Input Error:</strong> Diffusion Coeff and Tube Radius must be positive."); canGenerateJson = false; }
         if (postCollectionFlushTime_min_input < 0) { allWarnings.push("<strong>Input Error:</strong> Post-Collection Flush Time must be a non-negative number."); canGenerateJson = false; }
-        if (C_diff_from_UI > 1) { allWarnings.push(`<strong>Warning:</strong> Dispersion Coefficient (Cd = ${C_diff_from_UI.toFixed(2)}) > 1. Ensure this is intended.`); }
         if (minRT <=0 || maxRT <=0 || minRT > maxRT) { allWarnings.push("<strong>Input Error:</strong> Residence Times (min) must be positive and Min RT ≤ Max RT."); canGenerateJson = false; }
         if (minRatioBA < 0 || maxRatioBA < 0 || minRatioBA > maxRatioBA) { allWarnings.push("<strong>Input Error:</strong> Molar Ratios B/A must be non-negative and Min Ratio ≤ Max Ratio."); canGenerateJson = false; }
         if (minAFF < 0 || minAFF > 1 || maxAFF < 0 || maxAFF > 1 || minAFF > maxAFF) { allWarnings.push("<strong>Input Error:</strong> Active Flow Fractions must be between 0-1 and Min AFF ≤ Max AFF."); canGenerateJson = false; }
@@ -530,7 +557,6 @@
                     current_exp_time_accumulator_for_this_exp_steps += refillPauseDurationCustom_min;
                 }
                 
-                // Fix: Reset syringe volume to its physical maximum upon refill.
                 if (pumpA_needs_refill) syringe_A_remaining_uL = maxVolumeA_uL;
                 if (pumpB_needs_refill) syringe_B_remaining_uL = maxVolumeB_uL;
             }
@@ -559,9 +585,15 @@
             // ==========================================
             // CONSTANT FLOW COLLECTION (STATE MACHINE)
             // ==========================================
-            const V_disp_front = V_slug_input_uL * C_diff_from_UI;
-            const V_disp_back = V_slug_input_uL * C_diff_from_UI;
+            
             const V_system = V1_uL + VR_uL + V2_uL;
+
+const V_disp_calculated = calculateDispersionVolume(V_system, Q_total_uL_min, Dm_m2_s, radius_mm);
+const V_disp_front = V_disp_calculated;
+const V_disp_back = V_disp_calculated;
+
+
+         //   const V_system = V1_uL + VR_uL + V2_uL;
 
             let V_arrive = V_system - V_disp_front;
             if (V_arrive < 0) V_arrive = 0;
@@ -707,7 +739,8 @@
                     collect_volume_per_fraction_uL: safeFormatNumeric(collectVolumePerFraction_uL,1),
                     fast_collection_flow_rate_uL_min: safeFormatNumeric(Q_total_uL_min, 2),
                     slug_volume_input_uL: safeFormatNumeric(V_slug_input_uL,1), 
-                    coeff_diffusion_Cd_input: safeFormatNumeric(C_diff_from_UI,2),
+                    molecular_diffusion_coeff_m2_s: Dm_m2_s,
+                    tube_inner_radius_mm: safeFormatNumeric(radius_mm,3),
                     post_collection_flush_time_min_input: safeFormatNumeric(postCollectionFlushTime_min_input,2),
                     max_syringe_volumes_uL: { A: safeFormatNumeric(maxVolumeA_uL,1), B: safeFormatNumeric(maxVolumeB_uL,1) },
                     reactor_residence_time_min_input: safeFormatNumeric(minRT,2), reactor_residence_time_max_input: safeFormatNumeric(maxRT,2),
@@ -725,7 +758,8 @@
                     flow_rate_A_uL_min: safeFormatNumeric(flowA_uL_min,2),
                     flow_rate_B_uL_min: safeFormatNumeric(flowB_uL_min,2),
                     flow_rate_C_mixed_in_slug_uL_min: safeFormatNumeric(flow_C_mixed_in_slug_uL_min,2),
-                    slug_volume_for_reaction_uL: safeFormatNumeric(V_slug_input_uL,1), 
+                    slug_volume_for_reaction_uL: safeFormatNumeric(V_slug_input_uL,1),
+                    calculated_dispersion_volume_uL: safeFormatNumeric(V_disp_calculated, 2),
                     actual_conc_A_in_formulated_mixture_mM: safeFormatNumeric(concA_in_formulated_mix_mM,3),
                     actual_conc_B_in_formulated_mixture_mM: safeFormatNumeric(concB_in_formulated_mix_mM,3),
                     actual_molar_ratio_BA_in_formulated_mixture: (typeof actual_molar_ratio_BA_in_formulated_mix === 'string') ? actual_molar_ratio_BA_in_formulated_mix : safeFormatNumeric(actual_molar_ratio_BA_in_formulated_mix,3),
