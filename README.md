@@ -58,14 +58,19 @@ Defines the factor ranges for the chosen experimental design:
   $$Q_{C\_mixed} = Q_{total} \times (1 - \text{AFF})$$
   
   To formulate the required mixture from stock solutions A and B, the volumetric flow depends on the target molar ratio ($R_{target}$):
+
   
   $$Q_A = \frac{Q_{active}}{1 + R_{target} \times \left(\frac{[A]}{[B]}\right)}$$
   
   $$Q_B = Q_{active} - Q_A$$
 
+
 * **Concentrations in Formulated Mixture:**
 
-   $$C_{A,formulated} = \frac{Q_A \times [A]_{stock}}{Q_{total}}$$
+$$
+C_{A,formulated} = \frac{Q_A \times [A]_{stock}}{Q_{total}}
+$$
+
 
 * **Taylor-Aris Dispersion:** The volume of the slug's dispersed front and back tails ($V_{disp}$) is calculated dynamically using the total system transit time ($t$) and the average fluid velocity ($u$). Total time depends on all system volumes ($V_1$, $V_R$, $V_2$):
   
