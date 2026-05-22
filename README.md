@@ -86,7 +86,7 @@ $$
   
   $$V_{disp} = \pi r^2 (2\sigma_x)$$
   
-  *Note: Target collection volume = Slug Volume Input + $V_{disp\_front} + V_{disp\_back}$*
+  *Note: Target collection volume = Slug Volume Input + V_disp_front + V_disp_back*
 
 **B. Syringe Refill Logic**
 Calculates the total volume of Sample A and Sample B needed to form the slug. If the volume needed exceeds the remaining syringe volume, a refill is triggered, and a pause step is inserted at the beginning of that experiment.
