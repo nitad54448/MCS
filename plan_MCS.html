@@ -6,6 +6,8 @@
     <title>Microreactor Experiment Planner | Scherrmann Lab</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
@@ -160,6 +162,16 @@
                         <input class="form-control" type="number" id="maxTemperature" value="80" min="-200" max="400" step="any" placeholder="Max">
                     </div>
 
+
+                    <div class="mt-6 border-t border-slate-100 pt-6">
+                        <h3 class="text-sm font-bold uppercase tracking-wider text-slate-500 mb-4">Estimated Concentration Profile</h3>
+                        <p class="text-xs text-slate-400 mb-2">Preview based on average residence time.</p>
+                        <canvas id="dispersionPlot" style="width:100%; max-height: 250px;"></canvas>
+                    </div>
+
+                    <div class="mt-8">
+                        <button id="generateButton" onclick="calculateAndSave()" class="...">
+
                     <div class="mt-8">
                         <button id="generateButton" onclick="calculateAndSave()" class="w-full bg-sci-600 hover:bg-sci-500 text-white font-semibold py-3 px-4 rounded-lg shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-sci-500 focus:ring-offset-2 flex items-center justify-center gap-2">
                             <i class="fas fa-calculator"></i> Generate Execution Plan
@@ -239,6 +251,117 @@
 
     return V_disp_uL;
 }
+
+
+// 1. Error function approximation for the dispersion curve
+function erf(x) {
+    const z = Math.abs(x);
+    const t = 1.0 / (1.0 + 0.5 * z);
+    const ans = t * Math.exp(-z * z - 1.26551223 + t * (1.00002368 + t * (0.37409196 + t * (0.09678418 + t * (-0.18628806 + t * (0.27886807 + t * (-1.13520398 + t * (1.48851587 + t * (-0.82215223 + t * 0.17087277)))))))));
+    return x >= 0 ? 1 - ans : ans - 1;
+}
+
+let dispersionChart = null;
+
+// 2. Main plotting function
+function updateDispersionPlot() {
+    const VR = parseFloat(document.getElementById('reactorVolume').value) || 442;
+    const V1 = parseFloat(document.getElementById('deadVolume1').value) || 62;
+    const V2 = parseFloat(document.getElementById('deadVolume2').value) || 495;
+    const V_slug = parseFloat(document.getElementById('volumeReactantsSlugInput').value) || 442;
+    const Dm = parseFloat(document.getElementById('dmCoeff').value) || 1e-9;
+    const radius = parseFloat(document.getElementById('tubeRadius').value) || 0.25;
+    
+    // Using average residence time for the preview chart
+    const minRT = parseFloat(document.getElementById('minResidenceTime').value) || 5;
+    const maxRT = parseFloat(document.getElementById('maxResidenceTime').value) || 15;
+    const RT = (minRT + maxRT) / 2;
+    
+    const V_system = V1 + VR + V2;
+    const Q = VR / RT; // Flow rate in uL/min
+    
+    if (Q <= 0) return;
+
+    // sigma_V is half of V_disp (which you previously calculated for ~95% boundaries)
+    const V_disp = calculateDispersionVolume(V_system, Q, Dm, radius);
+    const sigma_V = V_disp / 2; 
+
+    // Calculate plotting bounds (±3 sigma covers the tails down to ~0.1%)
+    const V_start = Math.max(0, V_system - 3 * sigma_V);
+    const V_end = V_system + V_slug + 3 * sigma_V;
+    
+    const dataPoints = [];
+    const labels = [];
+    const steps = 150;
+    const stepSize = (V_end - V_start) / steps;
+    
+    for (let i = 0; i <= steps; i++) {
+        const V = V_start + (i * stepSize);
+        const t = V / Q; // Convert volume pumped to time in minutes
+        
+        // Analytical solution for an advection-dispersion finite pulse
+        const c_frac = 0.5 * (erf((V - V_system) / (Math.sqrt(2) * sigma_V)) - erf((V - (V_system + V_slug)) / (Math.sqrt(2) * sigma_V)));
+        
+        labels.push(t.toFixed(2));
+        dataPoints.push(Math.max(0, c_frac * 100)); // Store as percentage
+    }
+
+    const ctx = document.getElementById('dispersionPlot');
+    if (!ctx) return;
+    
+    if (dispersionChart) {
+        dispersionChart.destroy();
+    }
+    
+    dispersionChart = new Chart(ctx.getContext('2d'), {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: `Relative Conc. (%) at Avg RT=${RT.toFixed(1)}m`,
+                data: dataPoints,
+                borderColor: '#0ea5e9',
+                backgroundColor: 'rgba(14, 165, 233, 0.1)',
+                fill: true,
+                tension: 0.4,
+                pointRadius: 0,
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { intersect: false, mode: 'index' },
+            plugins: {
+                legend: { display: true, labels: { font: { size: 11, family: "'Inter', sans-serif" } } },
+                tooltip: { callbacks: { label: (context) => `Conc: ${context.raw.toFixed(1)}%` } }
+            },
+            scales: {
+                x: { 
+                    title: { display: true, text: 'Time at Collector (min)', font: { size: 11 } },
+                    ticks: { maxTicksLimit: 8 }
+                },
+                y: { 
+                    title: { display: true, text: 'Concentration (%)', font: { size: 11 } }, 
+                    min: 0, max: 105 
+                }
+            }
+        }
+    });
+}
+
+// 3. Attach listeners to update plot dynamically on parameter edits
+document.addEventListener('DOMContentLoaded', () => {
+    updateDispersionPlot();
+    // Listen to changes on all number inputs to redraw the graph
+    document.querySelectorAll('input[type="number"]').forEach(input => {
+        input.addEventListener('input', updateDispersionPlot);
+    });
+});
+
+
+
+
 
 
     function generateDesignPoints(factors, designType, allWarningsRef) {
