@@ -201,7 +201,7 @@
     </div>
    
 <footer class="fixed bottom-0 w-full bg-white border-t border-slate-200 py-2 text-center z-40 no-print">
-    <p class="text-[10px] text-slate-400 font-mono uppercase tracking-widest">MultiPass v14.7 - 22 MAY 2026 - NitaD & MCS Univ Paris-Saclay</p>
+    <p class="text-[10px] text-slate-400 font-mono uppercase tracking-widest">MultiPass v14.8 - 22 MAY 2026 - NitaD & MCS Univ Paris-Saclay</p>
 </footer>
 
     <script defer>
@@ -264,17 +264,24 @@ function erf(x) {
 let dispersionChart = null;
 
 // 2. Main plotting function
+// erreur de 0 avant la version 14.7 du 22 mai
 function updateDispersionPlot() {
-    const VR = parseFloat(document.getElementById('reactorVolume').value) || 442;
-    const V1 = parseFloat(document.getElementById('deadVolume1').value) || 62;
-    const V2 = parseFloat(document.getElementById('deadVolume2').value) || 495;
-    const V_slug = parseFloat(document.getElementById('volumeReactantsSlugInput').value) || 442;
-    const Dm = parseFloat(document.getElementById('dmCoeff').value) || 1e-9;
-    const radius = parseFloat(document.getElementById('tubeRadius').value) || 0.25;
+    // Helper function to safely parse values and allow 0
+    const getVal = (id, defaultVal) => {
+        const val = parseFloat(document.getElementById(id).value);
+        return isNaN(val) ? defaultVal : val;
+    };
+
+    const VR = getVal('reactorVolume', 442);
+    const V1 = getVal('deadVolume1', 62);
+    const V2 = getVal('deadVolume2', 495);
+    const V_slug = getVal('volumeReactantsSlugInput', 442);
+    const Dm = getVal('dmCoeff', 1e-9);
+    const radius = getVal('tubeRadius', 0.25);
     
     // Using average residence time for the preview chart
-    const minRT = parseFloat(document.getElementById('minResidenceTime').value) || 5;
-    const maxRT = parseFloat(document.getElementById('maxResidenceTime').value) || 15;
+    const minRT = getVal('minResidenceTime', 5);
+    const maxRT = getVal('maxResidenceTime', 15);
     const RT = (minRT + maxRT) / 2;
     
     const V_system = V1 + VR + V2;
