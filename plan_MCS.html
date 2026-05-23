@@ -79,7 +79,7 @@
                     <div class="input-row"><label class="form-label" for="deadVolume2">Dead Volume Reactor to Collection (µL):</label><input class="form-control sm:w-32" type="number" id="deadVolume2" value="495" min="0"></div>
                     <div class="input-row"><label class="form-label" for="collectVolumePerFraction">Collect Volume per Fraction (µL):</label><input class="form-control sm:w-32" type="number" id="collectVolumePerFraction" value="100" min="1"></div>
                     <div class="input-row"><label class="form-label" for="volumeReactantsSlugInput" title="Total volume intended to pass through the reactor.">Total Reactant Mixture Pumped (Slug Vol) (µL):</label><input class="form-control sm:w-32" type="number" id="volumeReactantsSlugInput" value="442" min="1"></div>
-                    <div class="input-row"><label class="form-label" for="dmCoeff" title="Molecular Diffusion Coefficient (m²/s)">Molecular Diffusion Coeff (m²/s):</label><input class="form-control sm:w-32" type="number" id="dmCoeff" value="1e-9" step="any"></div>
+                    <div class="input-row"><label class="form-label" for="dmCoeff" title="Molecular Diffusion Coefficient (m²/s)">Molecular Diffusion Coeff (m²/s):</label><input class="form-control sm:w-32" type="text" id="dmCoeff" value="1e-9" placeholder="e.g. 1e-9"></div>
                     <div class="input-row"><label class="form-label" for="tubeRadius" title="Inner radius of the tubing (mm)">Tube Inner Radius (mm):</label><input class="form-control sm:w-32" type="number" id="tubeRadius" value="0.25" min="0.01" step="any"></div>
                     <div class="input-row"><label class="form-label" for="postCollectionFlushTime">Post-Collection Flush Time (min):</label><input class="form-control sm:w-32" type="number" id="postCollectionFlushTime" value="5" min="0" step="any"></div>
                     <div class="input-row"><label class="form-label" for="maxVolumeA">Max Syringe Volume Pump A (µL):</label><input class="form-control sm:w-32" type="number" id="maxVolumeA" value="10000" min="1"></div>
@@ -201,10 +201,18 @@
     </div>
    
 <footer class="fixed bottom-0 w-full bg-white border-t border-slate-200 py-2 text-center z-40 no-print">
-    <p class="text-[10px] text-slate-400 font-mono uppercase tracking-widest">MultiPass v14.8 - 22 MAY 2026 - NitaD & MCS Univ Paris-Saclay</p>
+    <p class="text-[10px] text-slate-400 font-mono uppercase tracking-widest">MultiPass v14.9 - 23 MAY 2026 - NitaD & MCS Univ Paris-Saclay</p>
 </footer>
 
     <script defer>
+        // Robust number parser: handles "1e-4", "0.0001", "1E-6", spaces, comma decimal sep, etc.
+        function parseRobust(str) {
+            if (typeof str === 'number') return str;
+            const cleaned = String(str).trim().replace(',', '.');
+            const val = Number(cleaned);
+            return isNaN(val) ? NaN : val;
+        }
+
         function getFormattedDateTimeForFileName() { 
             const now = new Date();
             return `${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}_${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}${now.getSeconds().toString().padStart(2, '0')}`;
@@ -268,7 +276,8 @@ let dispersionChart = null;
 function updateDispersionPlot() {
     // Helper function to safely parse values and allow 0
     const getVal = (id, defaultVal) => {
-        const val = parseFloat(document.getElementById(id).value);
+        const raw = document.getElementById(id).value;
+        const val = parseRobust(raw);
         return isNaN(val) ? defaultVal : val;
     };
 
@@ -361,7 +370,7 @@ function updateDispersionPlot() {
 document.addEventListener('DOMContentLoaded', () => {
     updateDispersionPlot();
     // Listen to changes on all number inputs to redraw the graph
-    document.querySelectorAll('input[type="number"]').forEach(input => {
+    document.querySelectorAll('input[type="number"], input[type="text"]').forEach(input => {
         input.addEventListener('input', updateDispersionPlot);
     });
 });
@@ -502,7 +511,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const V2_uL = parseFloat(document.getElementById('deadVolume2').value);
         const collectVolumePerFraction_uL = parseFloat(document.getElementById('collectVolumePerFraction').value);
         const V_slug_input_uL = parseFloat(document.getElementById('volumeReactantsSlugInput').value); 
-        const Dm_m2_s = parseFloat(document.getElementById('dmCoeff').value);
+        const Dm_m2_s = parseRobust(document.getElementById('dmCoeff').value);
         const radius_mm = parseFloat(document.getElementById('tubeRadius').value);
         const postCollectionFlushTime_min_input = parseFloat(document.getElementById('postCollectionFlushTime').value);
         const maxVolumeA_uL = parseFloat(document.getElementById('maxVolumeA').value);

@@ -835,10 +835,6 @@ video {
   flex-direction: column;
 }
 
-.flex-wrap {
-  flex-wrap: wrap;
-}
-
 .items-start {
   align-items: flex-start;
 }
