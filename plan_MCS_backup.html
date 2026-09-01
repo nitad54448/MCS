@@ -28,7 +28,6 @@
         .alert.success { background-color: #f0fdf4; color: #166534; border-color: #bbf7d0; }
         .alert.warning { background-color: #fefce8; color: #854d0e; border-color: #fef08a; }
         .alert.critical-error { background-color: #fef2f2; color: #991b1b; border-color: #fecaca; }
-        :root { --critical-error-text: #991b1b; }
         
         #refillSummaryDisplay { background-color: #f8fafc; border: 1px solid #e2e8f0; padding: 1.5rem; border-radius: 0.5rem; margin-top: 1.5rem; }
         #refillSummaryDisplay h3 { color: #0f172a; font-weight: 600; font-size: 1.125rem; margin-bottom: 1rem; }
@@ -171,6 +170,9 @@
                     </div>
 
                     <div class="mt-8">
+                        <button id="generateButton" onclick="calculateAndSave()" class="...">
+
+                    <div class="mt-8">
                         <button id="generateButton" onclick="calculateAndSave()" class="w-full bg-sci-600 hover:bg-sci-500 text-white font-semibold py-3 px-4 rounded-lg shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-sci-500 focus:ring-offset-2 flex items-center justify-center gap-2">
                             <i class="fas fa-calculator"></i> Generate Execution Plan
                         </button>
@@ -199,7 +201,7 @@
     </div>
    
 <footer class="fixed bottom-0 w-full bg-white border-t border-slate-200 py-2 text-center z-40 no-print">
-    <p class="text-[10px] text-slate-400 font-mono uppercase tracking-widest">MultiPass v15.0 - 01 SEPT 2026 - NitaD & MCS Univ Paris-Saclay</p>
+    <p class="text-[10px] text-slate-400 font-mono uppercase tracking-widest">MultiPass v14.9 - 23 MAY 2026 - NitaD & MCS Univ Paris-Saclay</p>
 </footer>
 
     <script defer>
@@ -290,24 +292,11 @@ function updateDispersionPlot() {
     const minRT = getVal('minResidenceTime', 5);
     const maxRT = getVal('maxResidenceTime', 15);
     const RT = (minRT + maxRT) / 2;
-
-    // Guard against physically invalid inputs (0 or negative) that would make
-    // Deff = Dm + u^2*r^2/(48*Dm) evaluate to Infinity/NaN and blank the chart.
-    const plotCanvas = document.getElementById('dispersionPlot');
-    const plotIsInvalid = !(Dm > 0) || !(radius > 0) || !(RT > 0) || !(VR > 0) || !(V_slug > 0);
-    if (plotIsInvalid) {
-        if (dispersionChart) { dispersionChart.destroy(); dispersionChart = null; }
-        if (plotCanvas) {
-            const c = plotCanvas.getContext('2d');
-            c.clearRect(0, 0, plotCanvas.width, plotCanvas.height);
-        }
-        return;
-    }
-
+    
     const V_system = V1 + VR + V2;
     const Q = VR / RT; // Flow rate in uL/min
-
-    if (!(Q > 0) || !isFinite(Q)) return;
+    
+    if (Q <= 0) return;
 
     // sigma_V is half of V_disp (which you previously calculated for ~95% boundaries)
     const V_disp = calculateDispersionVolume(V_system, Q, Dm, radius);
@@ -380,23 +369,9 @@ function updateDispersionPlot() {
 // 3. Attach listeners to update plot dynamically on parameter edits
 document.addEventListener('DOMContentLoaded', () => {
     updateDispersionPlot();
-
-    // Only these inputs actually affect the dispersion curve.
-    const plotInputIds = [
-        'reactorVolume', 'deadVolume1', 'deadVolume2', 'volumeReactantsSlugInput',
-        'dmCoeff', 'tubeRadius', 'minResidenceTime', 'maxResidenceTime'
-    ];
-
-    // Debounce so the chart is not destroyed/recreated on every keystroke.
-    let plotRedrawTimer = null;
-    const scheduleRedraw = () => {
-        clearTimeout(plotRedrawTimer);
-        plotRedrawTimer = setTimeout(updateDispersionPlot, 250);
-    };
-
-    plotInputIds.forEach(id => {
-        const input = document.getElementById(id);
-        if (input) input.addEventListener('input', scheduleRedraw);
+    // Listen to changes on all number inputs to redraw the graph
+    document.querySelectorAll('input[type="number"], input[type="text"]').forEach(input => {
+        input.addEventListener('input', updateDispersionPlot);
     });
 });
 
@@ -405,8 +380,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 
-    function generateDesignPoints(factors, designType, allWarningsRef, designStateRef = {}) {
-        designStateRef.fellBackToFullFactorial = false;
+    function generateDesignPoints(factors, designType, allWarningsRef) {
         let designPoints = [];
         const varyingFactorsOnly = factors.filter(f => !f.isConstant);
         const numVaryingFactors = varyingFactorsOnly.length;
@@ -415,7 +389,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (numVaryingFactors !== 3) {
                 allWarningsRef.push("<strong>Design Note:</strong> Box-Behnken design is implemented for exactly 3 varying factors. Found " + numVaryingFactors + ". Defaulting to Full Factorial design.");
                 designType = "FullFactorial";
-                designStateRef.fellBackToFullFactorial = true;
             } else {
                 const bbdMatrixCoded = [
                     [-1, -1,  0], [+1, -1,  0], [-1, +1,  0], [+1, +1,  0],
@@ -447,7 +420,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (numVaryingFactors < 2) {
                  allWarningsRef.push("<strong>Design Note:</strong> Central Composite Design requires at least 2 varying factors. Found " + numVaryingFactors + ". Defaulting to Full Factorial design.");
                  designType = "FullFactorial";
-                 designStateRef.fellBackToFullFactorial = true;
             } else {
                 let codedPoints = [];
                 const k = numVaryingFactors;
@@ -610,9 +582,7 @@ document.addEventListener('DOMContentLoaded', () => {
         ];
         
         const originalSelectedDesignType = selectedDesignType;
-        const designState = {};
-        const designPoints = generateDesignPoints(factorDefinitions, selectedDesignType, allWarnings, designState);
-        const designFellBackToFullFactorial = designState.fellBackToFullFactorial === true;
+        const designPoints = generateDesignPoints(factorDefinitions, selectedDesignType, allWarnings);
         
         if (sortOrder === 'increasing') {
             designPoints.sort((a, b) => a.Temp - b.Temp);
@@ -656,7 +626,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const Q_total_uL_min = (VR_uL > 0 && RT_current_min > 0) ? VR_uL / RT_current_min : 0;
             if (Q_total_uL_min <= 1e-9) {
                 currentExpWarnings.push(`<strong>Warning (Exp ${experimentCounter}):</strong> Total flow rate (VR/RT) is ~0 µL/min for RT=${RT_current_min.toFixed(2)}. Skipping.`);
-                currentExpWarnings.forEach(w => { if (!allWarnings.includes(w)) allWarnings.push(w); });
+                if (!allWarnings.some(w => currentExpWarnings.includes(w))) allWarnings.push(...currentExpWarnings);
                 continue;
             }
 
@@ -669,14 +639,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 flowA_uL_min = flow_active_AB_uL_min / 2; flowB_uL_min = flow_active_AB_uL_min / 2;
             } else if (mM_B < 1e-9 || molarRatioBA_current > 1e9) { 
                 flowA_uL_min = flow_active_AB_uL_min; flowB_uL_min = 0;
-                if (mM_B < 1e-9 && molarRatioBA_current > 1e-9) {
-                    currentExpWarnings.push(`<strong>Warning (Exp ${experimentCounter}):</strong> Concentration of Sample B is 0 mM, so the requested molar ratio B/A = ${molarRatioBA_current.toFixed(2)} cannot be delivered. Pump B is set to 0 µL/min and the active flow is assigned entirely to A (actual B/A = 0).`);
-                }
             } else if (mM_A < 1e-9) { 
                 flowA_uL_min = 0; flowB_uL_min = flow_active_AB_uL_min;
-                if (molarRatioBA_current < 1e9) {
-                    currentExpWarnings.push(`<strong>Warning (Exp ${experimentCounter}):</strong> Concentration of Sample A is 0 mM, so the requested molar ratio B/A = ${molarRatioBA_current.toFixed(2)} cannot be delivered. Pump A is set to 0 µL/min and the active flow is assigned entirely to B (actual B/A is infinite).`);
-                }
             } else { 
                 const denominator = (1 + molarRatioBA_current * (mM_A / mM_B));
                 if (Math.abs(denominator) < 1e-9) { 
@@ -747,26 +711,13 @@ document.addEventListener('DOMContentLoaded', () => {
             function createPumpFlows(flowA, flowB, flowC_val, currentPumpCName = pumpC_for_json, isPushOrFlushStep = false) {
                 const flows = {};
                 allPumpNames.forEach(pump => { flows[pump] = 0.0; });
-
-                // Accumulate rather than assign: if the same physical pump is routed to
-                // more than one channel, its flow must be the SUM of those channels.
-                const addFlow = (pumpName, value) => {
-                    const v = parseFloat(value);
-                    if (pumpName && isFinite(v) && v > 1e-9) {
-                        flows[pumpName] = (flows[pumpName] || 0) + v;
-                    }
-                };
-
-                if (isPushOrFlushStep) {
-                    addFlow(currentPumpCName, flowC_val);
-                } else {
-                    addFlow(pumpA_name, flowA);
-                    addFlow(pumpB_name, flowB);
-                    addFlow(pumpC_for_json, flowC_val);
+                if (isPushOrFlushStep) { 
+                    if (currentPumpCName && parseFloat(flowC_val) > 1e-9) flows[currentPumpCName] = parseFloat(parseFloat(flowC_val).toFixed(2));
+                } else { 
+                    if (pumpA_name && parseFloat(flowA) > 1e-9) flows[pumpA_name] = parseFloat(parseFloat(flowA).toFixed(2));
+                    if (pumpB_name && parseFloat(flowB) > 1e-9) flows[pumpB_name] = parseFloat(parseFloat(flowB).toFixed(2));
+                    if (pumpC_for_json && parseFloat(flowC_val) > 1e-9) flows[pumpC_for_json] = parseFloat(parseFloat(flowC_val).toFixed(2));
                 }
-
-                // Round only once, after summing.
-                allPumpNames.forEach(pump => { flows[pump] = parseFloat(flows[pump].toFixed(2)); });
                 return flows;
             }
 
@@ -784,13 +735,7 @@ const V_disp_back = V_disp_calculated;
          //   const V_system = V1_uL + VR_uL + V2_uL;
 
             let V_arrive = V_system - V_disp_front;
-            if (V_arrive < 0) {
-                // The Taylor-Aris dispersion band is wider than the whole mixer-to-collector
-                // volume: the model is outside its range of validity and collection would have
-                // to start before the slug is even formed. Clamp, but never do so silently.
-                currentExpWarnings.push(`<strong>Warning (Exp ${experimentCounter}):</strong> Estimated dispersion volume (${V_disp_front.toFixed(1)} µL) exceeds the total system volume V1+VR+V2 (${V_system.toFixed(1)} µL). Arrival volume has been clamped to 0 µL, so collection starts immediately. The dispersion estimate is outside its validity range here — check the flow rate, tube radius and diffusion coefficient, and treat the collection window as indicative only.`);
-                V_arrive = 0;
-            }
+            if (V_arrive < 0) V_arrive = 0;
 
             const target_collect_vol_uL = V_slug_input_uL + V_disp_front + V_disp_back;
             const V_finish_collect = V_arrive + target_collect_vol_uL;
@@ -922,15 +867,9 @@ const V_disp_back = V_disp_calculated;
             
             let jsonDesignLabel = originalSelectedDesignType;
             if (originalSelectedDesignType === 'CentralCompositeSimple') { jsonDesignLabel = 'CentralComposite simple'; }
-            // If the requested design was not applicable, the actual design generated is a
-            // Full Factorial. Record that in the exported file, not just in the HTML summary.
-            if (designFellBackToFullFactorial) {
-                jsonDesignLabel = `${jsonDesignLabel} (fallback to FullFactorial)`;
-            }
-            const effectiveDesignLabel = designFellBackToFullFactorial ? 'FullFactorial' : originalSelectedDesignType;
 
             experimentPlan.push({
-                experiment_name: `Experiment ${experimentCounter} (${effectiveDesignLabel}: RT ${RT_current_min.toFixed(1)}m, B/A ${molarRatioBA_current.toFixed(2)}, AFF ${AFF_current.toFixed(2)}, T ${temp_current_celsius.toFixed(1)}C)`,
+                experiment_name: `Experiment ${experimentCounter} (${originalSelectedDesignType}: RT ${RT_current_min.toFixed(1)}m, B/A ${molarRatioBA_current.toFixed(2)}, AFF ${AFF_current.toFixed(2)}, T ${temp_current_celsius.toFixed(1)}C)`,
                 input_parameters: { 
                     design_type_selected: jsonDesignLabel,
                     reactor_volume_uL: safeFormatNumeric(VR_uL, 1),
@@ -1018,7 +957,7 @@ const V_disp_back = V_disp_calculated;
              if (summaryDesignType === 'CentralCompositeSimple') {
                 summaryDesignType = 'Central Composite (simple, alpha=1)';
             }
-            if (designFellBackToFullFactorial) {
+            if (allWarnings.some(w => w.includes("Defaulting to Full Factorial"))) {
                 summaryDesignType = `${summaryDesignType} (fallback to Full Factorial)`;
             }
 
@@ -1050,8 +989,7 @@ const V_disp_back = V_disp_calculated;
             const timestamp = getFormattedDateTimeForFileName();
             const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(experimentPlan, null, 2));
             downloadLink.setAttribute("href", dataStr);
-            const fileDesignTag = designFellBackToFullFactorial ? `${originalSelectedDesignType}-fallbackFullFactorial` : originalSelectedDesignType;
-            downloadLink.setAttribute("download", `microreactor_plan_${fileDesignTag}_${timestamp}.json`);
+            downloadLink.setAttribute("download", `microreactor_plan_${originalSelectedDesignType}_${timestamp}.json`);
             downloadLink.innerHTML = '<i class="fas fa-download"></i> Download Full Experiment Plan (JSON)';
             downloadLink.style.display = 'flex';
 
