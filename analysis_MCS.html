@@ -10,7 +10,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
     
@@ -30,6 +29,7 @@
         .stats-coeff-table th, .stats-coeff-table td { padding: 0.5rem; border-bottom: 1px solid #f1f5f9; }
         .stats-summary-table td { padding: 0.5rem; }
     </style>
+</head>
 <body class="font-sans text-slate-800 antialiased pb-28">
 
 <header class="bg-slate-900 text-white shadow-md border-b border-sci-900">
@@ -184,12 +184,34 @@
 </div>
 
 <footer class="fixed bottom-0 w-full bg-white border-t border-slate-200 py-2 text-center z-40 no-print">
-    <p class="text-[10px] text-slate-400 font-mono uppercase tracking-widest">v14.5 - April 13th, 2026 - NitaD & MCS Univ Paris-Saclay</p>
+    <p class="text-[10px] text-slate-400 font-mono uppercase tracking-widest">v14.7 - 01 Sept 2026 - NitaD & MCS Univ Paris-Saclay</p>
 </footer>
 
 
 <script>
-// refs
+'use strict';
+
+/* =========================================================================
+   Experiment Data Analyzer - v14.6
+   Fixes in this revision:
+    1. buildModel2F: linear/interaction model no longer produces a singular
+       design matrix (padded zero columns removed).
+    2. Score is null when a required response is missing -> blank rows are
+       no longer fitted as observed zeros.
+    3. Models are always fitted in coded units and back-transformed to actual
+       units; matrix inversion uses partial pivoting.
+    4. Predictions reuse the model's own bounds / active factors.
+    5. Confidence intervals use the Student t quantile at n-p df.
+    6. JSON upload accepts files with a missing/empty MIME type.
+    +  HTML escaping, adj-R2 guard, three.js dependency removed,
+       debounced re-fitting, manual mode triggers an analysis.
+   ========================================================================= */
+
+// ---------------------------------------------------------------- state ---
+let experimentData = [];
+let factorKeys     = [];
+
+// ----------------------------------------------------------------- refs ---
 const fileInput               = document.getElementById('json-file-input');
 const fileNameEl              = document.getElementById('file-name');
 const uploadSection           = document.getElementById('upload-section');
@@ -213,199 +235,111 @@ const alertClose              = document.getElementById('alert-close');
 const predictedOptimaCard     = document.getElementById('predicted-optima-card');
 const predictedYieldDisplay   = document.getElementById('predicted-yield-display');
 const predictedSelectivityDisplay = document.getElementById('predicted-selectivity-display');
+const predictedScoreDisplay   = document.getElementById('predicted-score-display');
 const contourPlotsContainer   = document.getElementById('contour-plots-container');
 const contourPlotsPlaceholder = document.getElementById('contour-plots-placeholder');
 const modelStatsSection       = document.getElementById('model-stats-section');
+const printPdfBtn             = document.getElementById('print-pdf-btn');
 
-const predictedScoreDisplay = document.getElementById('predicted-score-display');
+// ---------------------------------------------------------------- utils ---
+const ESC_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+const esc  = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ESC_MAP[c]);
+const isNum = (v) => v !== null && v !== undefined && v !== '' && isFinite(Number(v));
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
-const printPdfBtn = document.getElementById('print-pdf-btn');
+// FIX #5: Student t two-sided 95% quantile (was hardcoded to the normal 1.96).
+const T95_1_30 = [12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.228,
+                  2.201, 2.179, 2.160, 2.145, 2.131, 2.120, 2.110, 2.101, 2.093, 2.086,
+                  2.080, 2.074, 2.069, 2.064, 2.060, 2.056, 2.052, 2.048, 2.045, 2.042];
+const T95_TAIL = [[30, 2.042], [40, 2.021], [50, 2.009], [60, 2.000],
+                  [80, 1.990], [100, 1.984], [120, 1.980]];
 
-document.getElementById('print-pdf-btn').addEventListener('click', generatePDF);
-
-
-function generatePDF() {
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({ orientation: 'landscape' });
-
-    // Generate timestamp formats
-    const now = new Date();
-    const pad = (n) => n.toString().padStart(2, '0');
-    const fileTimestamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}h${pad(now.getMinutes())}m${pad(now.getSeconds())}s`;
-
-    // 1. Report Header & Summary
-    doc.setFontSize(18);
-    doc.setTextColor(15, 23, 42);
-    doc.text("Experiment Data Analyzer Report", 14, 20);
-    
-    // Add Timestamp and Link
-    doc.setFontSize(9);
-    doc.setTextColor(100, 116, 139);
-    doc.text(`Generated: ${now.toLocaleString()}`, 14, 26);
-    doc.text(`Source: ${window.location.href}`, 14, 31);
-
-    // Shift the optimums down slightly
-    doc.setFontSize(11);
-    doc.setTextColor(71, 85, 105);
-    doc.text(`Peak Yield: ${bestYieldEl.textContent} ${bestYieldExpEl.textContent}`, 14, 41);
-    doc.text(`Peak Selectivity: ${bestSelectivityEl.textContent} ${bestSelectivityExpEl.textContent}`, 14, 48);
-    doc.text(`Best Score: ${bestOverallEl.textContent} ${bestOverallExpEl.textContent}`, 14, 55);
-
-    // 2. Main Data Table
-    const tableHead = [['Exp #', ...factorKeys, 'Yield (%)', 'Selectivity (%)', 'Score']];
-    const tableBody = experimentData.map(exp => [
-        exp.id,
-        ...factorKeys.map(k => exp.settings[k] !== null && exp.settings[k] !== '' ? exp.settings[k] : '-'),
-        exp.yield !== null ? exp.yield : '-',
-        exp.selectivity !== null ? exp.selectivity : '-',
-        exp.score ? exp.score.toFixed(3) : '-'
-    ]);
-
-    doc.autoTable({
-        startY: 63, head: tableHead, body: tableBody, theme: 'grid',
-        headStyles: { fillColor: [14, 165, 233], textColor: 255, fontStyle: 'bold' },
-        styles: { fontSize: 9, halign: 'center', cellPadding: 3 }
-    });
-
-    // 3. Add Model Statistics Pages
-    const statTables = document.querySelectorAll('.stats-coeff-table, .stats-summary-table');
-    if (statTables.length > 0) {
-        doc.addPage();
-        doc.setFontSize(16);
-        doc.text("Model Statistics", 14, 20);
-        let currentY = 30;
-        
-        statTables.forEach((table, index) => {
-            // Add a title before coefficient tables
-            if (table.classList.contains('stats-coeff-table')) {
-                const parentTitle = table.closest('.p-5').querySelector('h3').innerText;
-                doc.setFontSize(12);
-                doc.text(parentTitle, 14, currentY);
-                currentY += 5;
-            }
-
-            doc.autoTable({
-                html: table,
-                startY: currentY,
-                theme: 'grid',
-                styles: { fontSize: 8 },
-                margin: { bottom: 20 }
-            });
-            
-            currentY = doc.lastAutoTable.finalY + 10;
-            if (currentY > 170 && index < statTables.length - 1) { 
-                doc.addPage(); 
-                currentY = 20; 
-            }
-        });
-    }
-
-    // 4. Add Contour Plots Pages
-    const canvases = document.querySelectorAll('#contour-plots-container canvas');
-    if (canvases.length > 0) {
-        doc.addPage();
-        doc.setFontSize(16);
-        doc.text("Response Surface Plots", 14, 20);
-        
-        let yOffset = 30;
-        let xOffset = 14;
-        
-        canvases.forEach((canvas, index) => {
-            const imgData = canvas.toDataURL('image/jpeg', 1.0);
-            doc.addImage(imgData, 'JPEG', xOffset, yOffset, 100, 100);
-            
-            xOffset += 110; // Move right for the next image
-            if (xOffset > 200) { 
-                xOffset = 14; 
-                yOffset += 110; // Move down to next row
-            }
-            // If page is full and there are more images, add a new page
-            if (yOffset > 100 && index < canvases.length - 1 && xOffset === 14) {
-                doc.addPage();
-                yOffset = 30;
-            }
-        });
-    }
-
-    // 5. Save with the new timestamped filename
-    doc.save(`Experimental_Report_${fileTimestamp}.pdf`);
-}
-
-
-document.getElementById('manual-start-btn').addEventListener('click', startManualMode);
-
-function startManualMode() {
-    // Default factors (editable later if you want)
-    const factors = [
-        { name: 'Residence Time', unit: 'min' },
-        { name: 'Molar Ratio B/A', unit: '' },
-        { name: 'Active Flow Fraction', unit: '' },
-        { name: 'Temperature', unit: 'C' }
-    ];
-
-    factorKeys = factors.map(f => f.name);
-
-    experimentData = [
-        {
-            id: 1,
-            settings: Object.fromEntries(factorKeys.map(k => [k, ''])),
-            yield: null,
-            selectivity: null,
-            score: 0
-        }
-    ];
-
-    renderTable(factors);
-    resultsSection.classList.remove('hidden');
-    uploadSection.classList.add('hidden');
-}
-
-
-
-let experimentData = [], factorKeys = [];
-
-// events
-fileInput.addEventListener('change', (e) => processFile(e.target.files[0]));
-fileUploadLabel.addEventListener('dragover',  (e) => { e.preventDefault(); e.stopPropagation(); fileUploadLabel.classList.add('bg-slate-100'); });
-fileUploadLabel.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); fileUploadLabel.classList.remove('bg-slate-100'); });
-fileUploadLabel.addEventListener('drop',      (e) => { e.preventDefault(); e.stopPropagation(); fileUploadLabel.classList.remove('bg-slate-100'); processFile(e.dataTransfer.files[0]); });
-yieldWeightSlider.addEventListener('input', handleSliderChange);
-selectivityWeightSlider.addEventListener('input', handleSliderChange);
-tableBody.addEventListener('input', handleTableInputChange);
-
-tableBody.addEventListener('change', (e) => {
-    if (!e.target.hasAttribute('data-metric')) return;
-    const rawValue = e.target.value.replace(',', '.');
-    let value = (rawValue === '' || isNaN(parseFloat(rawValue))) ? null : parseFloat(rawValue);
-    
-    if (value !== null) {
-        const metric = e.target.dataset.metric;
-        if (metric === 'yield' || metric === 'selectivity') {
-            e.target.value = Math.max(0, Math.min(100, value));
-        } else if (metric === 'setting') {
-            const factor = e.target.dataset.factor.toLowerCase();
-            if ((factor.includes('time') || factor.includes('ratio')) && value <= 0) {
-                e.target.value = 0.01;
-            }
+function tCritical(df) {
+    if (!isFinite(df) || df < 1) return NaN;
+    const d = Math.floor(df);
+    if (d <= 30) return T95_1_30[d - 1];
+    if (d >= 120) return 1.960 + (1.980 - 1.960) * (120 / d);   // -> 1.96 as df -> inf
+    for (let i = 0; i < T95_TAIL.length - 1; i++) {
+        const [d1, t1] = T95_TAIL[i], [d2, t2] = T95_TAIL[i + 1];
+        if (d <= d2) {
+            const w = (1 / d - 1 / d1) / (1 / d2 - 1 / d1);
+            return t1 + (t2 - t1) * w;
         }
     }
-});
+    return 1.980;
+}
 
-alertClose.addEventListener('click', () => alertModal.style.display = 'none');
+// FIX (three.js): local HSL -> RGB, so the contour plots no longer depend on
+// a 600 kB 3D library being reachable on a CDN.
+function hslToRgb(h, s, l) {
+    const f = (n) => {
+        const k = (n + h * 12) % 12;
+        const a = s * Math.min(l, 1 - l);
+        return l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+    };
+    return [f(0) * 255, f(8) * 255, f(4) * 255];
+}
 
 function customAlert(msg) { alertMessage.textContent = msg; alertModal.style.display = 'flex'; }
+alertClose.addEventListener('click', () => { alertModal.style.display = 'none'; });
 
-// Files
+// --------------------------------------------------------------- matrix ---
+const matrix = {
+    multiply: (a, b) => a.map((r) => b[0].map((_, j) => r.reduce((s, e, k) => s + e * b[k][j], 0))),
+    transpose: (a) => a[0].map((_, i) => a.map((r) => r[i])),
+
+    // FIX #3: partial pivoting + a scale-relative singularity tolerance.
+    // The previous version took the first non-zero pivot, which is numerically
+    // unstable for the badly-scaled matrices produced by quadratic terms.
+    invert: (m) => {
+        const n = m.length;
+        let scale = 0;
+        for (const row of m) for (const v of row) { const a = Math.abs(v); if (a > scale) scale = a; }
+        if (!(scale > 0) || !isFinite(scale)) return null;
+        const tol = 1e-12 * scale;
+
+        const C = m.map((r, i) => [...r, ...m.map((_, j) => (i === j ? 1 : 0))]);
+        for (let i = 0; i < n; i++) {
+            let piv = i;
+            for (let k = i + 1; k < n; k++) if (Math.abs(C[k][i]) > Math.abs(C[piv][i])) piv = k;
+            if (Math.abs(C[piv][i]) < tol) return null;          // singular
+            if (piv !== i) { const t = C[i]; C[i] = C[piv]; C[piv] = t; }
+
+            const d = C[i][i];
+            for (let j = i; j < 2 * n; j++) C[i][j] /= d;
+            for (let k = 0; k < n; k++) {
+                if (k === i) continue;
+                const mu = C[k][i];
+                if (mu === 0) continue;
+                for (let j = i; j < 2 * n; j++) C[k][j] -= mu * C[i][j];
+            }
+        }
+        return C.map((r) => r.slice(n));
+    }
+};
+
+// -------------------------------------------------------- factor coding ---
+// coded = 2*(x - xMin)/(xMax - xMin) - 1
+function codeValue(v, lo, hi)   { return (hi === lo) ? 0 : 2 * (Number(v) - lo) / (hi - lo) - 1; }
+function uncodeValue(c, lo, hi) { return lo + (c + 1) / 2 * (hi - lo); }
+
+// ================================ DATA IN =================================
 function processFile(file) {
     if (!file) return;
-    if (!file.type.match('application/json')) { customAlert('Invalid file type. Please upload a JSON file or edit the data manually.'); return; }
+    // FIX #6: file.type is frequently "" for .json (Windows, Firefox).
+    const looksJson = /\.json$/i.test(file.name || '') ||
+                      /json/i.test(file.type || '') ||
+                      !file.type;
+    if (!looksJson) { customAlert('Invalid file type. Please upload a JSON file or edit the data manually.'); return; }
+
     fileNameEl.textContent = file.name;
     const reader = new FileReader();
+    reader.onerror = () => customAlert('Could not read the file.');
     reader.onload = (e) => {
         let rawData;
         try { rawData = JSON.parse(e.target.result); }
         catch {
-            const t = e.target.result.trim(), i = t.lastIndexOf(']');
+            const t = String(e.target.result).trim(), i = t.lastIndexOf(']');
             if (i > -1) { try { rawData = JSON.parse(t.substring(0, i + 1)); } catch { customAlert('Error parsing JSON file.'); return; } }
             else { customAlert('Error parsing JSON file.'); return; }
         }
@@ -414,21 +348,31 @@ function processFile(file) {
     reader.readAsText(file);
 }
 
+function sanitizeSettings(raw, keys) {
+    const out = {};
+    keys.forEach((k) => {
+        const v = raw ? raw[k] : undefined;
+        out[k] = isNum(v) ? Number(v) : '';
+    });
+    return out;
+}
+
 function initializeData(rawData) {
     let data;
     if (Array.isArray(rawData)) {
         data = transformNewJsonFormat(rawData);
         if (!data) { customAlert('Could not process the provided JSON array.'); return; }
-    } else if (rawData.experiments && Array.isArray(rawData.experiments) && rawData.factors) {
+    } else if (rawData && rawData.experiments && Array.isArray(rawData.experiments) && Array.isArray(rawData.factors)) {
         data = rawData;
     } else { customAlert('Invalid JSON format.'); return; }
 
-    factorKeys     = data.factors.map(f => f.name);
+    factorKeys = data.factors.map((f) => String(f.name));
     experimentData = data.experiments.map((exp, idx) => ({
         id: exp.id !== undefined ? exp.id : idx + 1,
-        settings: exp.settings,
-        yield: null, selectivity: null, score: 0
+        settings: sanitizeSettings(exp.settings, factorKeys),
+        yield: null, selectivity: null, score: null
     }));
+
     renderTable(data.factors);
     resultsSection.classList.remove('hidden');
     uploadSection.classList.add('hidden');
@@ -446,161 +390,212 @@ function transformNewJsonFormat(rawData) {
     const getNested = (obj, path) => path.reduce((o, p) => (o && o[p] !== undefined) ? o[p] : undefined, obj);
     const experiments = rawData.map((exp, idx) => {
         const settings = {};
-        factorDefs.forEach(def => { settings[def.name] = getNested(exp, def.path); });
-        return { id: idx + 1, settings, yield: null, selectivity: null, score: 0 };
+        factorDefs.forEach((def) => {
+            const v = getNested(exp, def.path);
+            settings[def.name] = isNum(v) ? Number(v) : '';
+        });
+        return { id: idx + 1, settings, yield: null, selectivity: null, score: null };
     });
     return { factors: factorDefs.map(({ name, unit }) => ({ name, unit })), experiments };
 }
 
-// Tables
+// ================================= TABLE ==================================
+// FIX (XSS): factor names and values come from an untrusted JSON file and are
+// interpolated into innerHTML, so everything is escaped here and below.
+function numInput(attrs, value) {
+    return `<input type="text" inputmode="decimal" ${attrs} value="${esc(value ?? '')}" ` +
+           `class="w-24 bg-slate-50 border border-slate-300 text-slate-900 text-sm rounded-lg p-2">`;
+}
+
+function buildRowHtml(exp) {
+    const settingsHtml = factorKeys.map((key) =>
+        `<td class="px-6 py-4">${numInput(`data-metric="setting" data-factor="${esc(key)}"`, exp.settings[key])}</td>`
+    ).join('');
+    return `<th scope="row" class="px-6 py-4 font-medium text-slate-900 whitespace-nowrap">${esc(exp.id)}</th>` +
+           settingsHtml +
+           `<td class="px-6 py-4">${numInput('data-metric="yield"', exp.yield)}</td>` +
+           `<td class="px-6 py-4">${numInput('data-metric="selectivity"', exp.selectivity)}</td>` +
+           `<td class="px-6 py-4 font-medium text-slate-600 score-cell">-</td>` +
+           `<td class="px-4 py-4 text-center"><button data-action="delete" class="text-red-500 hover:text-red-700 font-bold text-xl" title="Remove Row">&times;</button></td>`;
+}
+
+function appendRow(exp, index) {
+    const row = document.createElement('tr');
+    row.className = 'bg-white border-b hover:bg-slate-50';
+    row.dataset.index = index;
+    row.innerHTML = buildRowHtml(exp);
+    tableBody.appendChild(row);
+}
+
 function renderTable(factors) {
     tableHead.innerHTML = '';
     tableBody.innerHTML = '';
+
     const headerRow = document.createElement('tr');
-    const factorHeaders = factors.map(f => `<th scope="col" class="px-6 py-3">${f.name}${f.unit ? ` (${f.unit})` : ''}</th>`).join('');
-    headerRow.innerHTML = `<th scope="col" class="px-6 py-3">Exp #</th>${factorHeaders}<th scope="col" class="px-6 py-3">Yield (%)</th><th scope="col" class="px-6 py-3">Selectivity (%)</th><th scope="col" class="px-6 py-3">Weighted Score</th><th scope="col" class="px-6 py-3"></th>`;
+    const factorHeaders = factors.map((f) =>
+        `<th scope="col" class="px-6 py-3">${esc(f.name)}${f.unit ? ` (${esc(f.unit)})` : ''}</th>`
+    ).join('');
+    headerRow.innerHTML = `<th scope="col" class="px-6 py-3">Exp #</th>${factorHeaders}` +
+        `<th scope="col" class="px-6 py-3">Yield (%)</th><th scope="col" class="px-6 py-3">Selectivity (%)</th>` +
+        `<th scope="col" class="px-6 py-3">Weighted Score</th><th scope="col" class="px-6 py-3"></th>`;
     tableHead.appendChild(headerRow);
-    experimentData.forEach((exp, index) => {
-        const row = document.createElement('tr');
-        row.className = 'bg-white border-b hover:bg-slate-50';
-        row.dataset.index = index;
-        const settingsHtml = factorKeys.map(key => {
-            const value = exp.settings[key] ?? '';
-            return `<td class="px-6 py-4"><input type="text" inputmode="decimal" data-metric="setting" data-factor="${key}" value="${value}" class="w-24 bg-slate-50 border-slate-300 text-slate-900 text-sm rounded-lg p-2"></td>`;
-        }).join('');
-        row.innerHTML = `<th scope="row" class="px-6 py-4 font-medium text-slate-900 whitespace-nowrap">${exp.id}</th>${settingsHtml}<td class="px-6 py-4"><input type="text" inputmode="decimal" data-metric="yield" class="w-24 bg-slate-50 border-slate-300 text-slate-900 text-sm rounded-lg p-2"></td><td class="px-6 py-4"><input type="text" inputmode="decimal" data-metric="selectivity" class="w-24 bg-slate-50 border-slate-300 text-slate-900 text-sm rounded-lg p-2"></td><td class="px-6 py-4 font-medium text-slate-600 score-cell">-</td><td class="px-4 py-4 text-center"><button data-action="delete" class="text-red-500 hover:text-red-700 font-bold text-xl" title="Remove Row">&times;</button></td>`;
-        tableBody.appendChild(row);
-    });
+
+    experimentData.forEach(appendRow);
 }
 
-//depuis la version 14.2, limite à 100%
-//erreur dans input yield avant 14.4
-
 function handleTableInputChange(e) {
-    if (!e.target.hasAttribute('data-metric')) return;
-    const rowIndex = e.target.closest('tr').dataset.index;
+    if (!e.target.hasAttribute || !e.target.hasAttribute('data-metric')) return;
+    const tr = e.target.closest('tr');
+    if (!tr) return;
+    const rowIndex = parseInt(tr.dataset.index, 10);
+    if (!(rowIndex >= 0) || rowIndex >= experimentData.length) return;
+
     const metric   = e.target.dataset.metric;
     const rawValue = e.target.value.replace(',', '.');
-    let value      = (rawValue === '' || isNaN(parseFloat(rawValue))) ? null : parseFloat(rawValue);
+    let value      = (rawValue === '' || !isFinite(parseFloat(rawValue))) ? null : parseFloat(rawValue);
 
     if (value !== null) {
-        // Clamp values for the data model, but don't force the visual update yet
         if (metric === 'yield' || metric === 'selectivity') {
-            value = Math.max(0, Math.min(100, value));
-        } 
-        else if (metric === 'setting') {
-            const factor = e.target.dataset.factor.toLowerCase();
-            if (factor.includes('time') || factor.includes('ratio')) {
-                if (value <= 0) value = 0.01;
-            }
+            value = clamp(value, 0, 100);
+        } else if (metric === 'setting') {
+            const factor = String(e.target.dataset.factor).toLowerCase();
+            if ((factor.includes('time') || factor.includes('ratio')) && value <= 0) value = 0.01;
         }
     }
 
-    if (rowIndex < experimentData.length) {
-        if (metric === 'setting') experimentData[rowIndex].settings[e.target.dataset.factor] = value;
-        else experimentData[rowIndex][metric] = value;
-        analyzeData();
-    }
+    if (metric === 'setting') experimentData[rowIndex].settings[e.target.dataset.factor] = (value === null ? '' : value);
+    else experimentData[rowIndex][metric] = value;
+
+    analyzeData();
 }
 
-
 function handleSliderChange(e) {
-    if (e && e.target === yieldWeightSlider)       selectivityWeightSlider.value = 100 - yieldWeightSlider.value;
-    else if (e && e.target === selectivityWeightSlider) yieldWeightSlider.value  = 100 - selectivityWeightSlider.value;
+    if (e && e.target === yieldWeightSlider)            selectivityWeightSlider.value = 100 - yieldWeightSlider.value;
+    else if (e && e.target === selectivityWeightSlider) yieldWeightSlider.value       = 100 - selectivityWeightSlider.value;
     yieldWeightLabel.textContent       = `${yieldWeightSlider.value}%`;
     selectivityWeightLabel.textContent = `${selectivityWeightSlider.value}%`;
     analyzeData();
 }
 
-//  Rows 
+// --------------------------------------------------------------- events ---
+fileInput.addEventListener('change', (e) => processFile(e.target.files[0]));
+fileUploadLabel.addEventListener('dragover',  (e) => { e.preventDefault(); e.stopPropagation(); fileUploadLabel.classList.add('bg-slate-100'); });
+fileUploadLabel.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); fileUploadLabel.classList.remove('bg-slate-100'); });
+fileUploadLabel.addEventListener('drop',      (e) => { e.preventDefault(); e.stopPropagation(); fileUploadLabel.classList.remove('bg-slate-100'); processFile(e.dataTransfer.files[0]); });
+yieldWeightSlider.addEventListener('input', handleSliderChange);
+selectivityWeightSlider.addEventListener('input', handleSliderChange);
+tableBody.addEventListener('input', handleTableInputChange);
+
+// On blur, snap the displayed text to the clamped value stored in the model.
+tableBody.addEventListener('change', (e) => {
+    if (!e.target.hasAttribute || !e.target.hasAttribute('data-metric')) return;
+    const tr = e.target.closest('tr');
+    if (!tr) return;
+    const rowIndex = parseInt(tr.dataset.index, 10);
+    if (!(rowIndex >= 0) || rowIndex >= experimentData.length) return;
+
+    const metric = e.target.dataset.metric;
+    const stored = (metric === 'setting')
+        ? experimentData[rowIndex].settings[e.target.dataset.factor]
+        : experimentData[rowIndex][metric];
+    e.target.value = (stored === null || stored === undefined) ? '' : stored;
+});
+
 document.getElementById('add-row-btn').addEventListener('click', () => {
-    if (experimentData.length === 0) return;
-    const newId  = Math.max(...experimentData.map(e => e.id)) + 1;
-    const newExp = { id: newId, settings: {}, yield: null, selectivity: null, score: 0 };
-    factorKeys.forEach(k => newExp.settings[k] = '');
+    if (factorKeys.length === 0) return;
+    const newId = experimentData.length ? Math.max(...experimentData.map((x) => Number(x.id) || 0)) + 1 : 1;
+    const newExp = { id: newId, settings: {}, yield: null, selectivity: null, score: null };
+    factorKeys.forEach((k) => { newExp.settings[k] = ''; });
     experimentData.push(newExp);
-    const newIndex = experimentData.length - 1;
-    const row = document.createElement('tr');
-    row.className = 'bg-white border-b hover:bg-slate-50';
-    row.dataset.index = newIndex;
-    const settingsHtml = factorKeys.map(key =>
-        `<td class="px-6 py-4"><input type="text" inputmode="decimal" data-metric="setting" data-factor="${key}" value="" class="w-24 bg-slate-50 border-slate-300 text-slate-900 text-sm rounded-lg p-2"></td>`
-    ).join('');
-    row.innerHTML = `<th scope="row" class="px-6 py-4 font-medium text-slate-900 whitespace-nowrap">${newId}</th>${settingsHtml}<td class="px-6 py-4"><input type="text" inputmode="decimal" data-metric="yield" class="w-24 bg-slate-50 border-slate-300 text-slate-900 text-sm rounded-lg p-2"></td><td class="px-6 py-4"><input type="text" inputmode="decimal" data-metric="selectivity" class="w-24 bg-slate-50 border-slate-300 text-slate-900 text-sm rounded-lg p-2"></td><td class="px-6 py-4 font-medium text-slate-600 score-cell">-</td><td class="px-4 py-4 text-center"><button data-action="delete" class="text-red-500 hover:text-red-700 font-bold text-xl" title="Remove Row">&times;</button></td>`;
-    tableBody.appendChild(row);
+    appendRow(newExp, experimentData.length - 1);
 });
 
 tableBody.addEventListener('click', (e) => {
-    if (e.target.dataset.action === 'delete') {
-        const tr       = e.target.closest('tr');
-        const rowIndex = parseInt(tr.dataset.index);
-        experimentData.splice(rowIndex, 1);
-        Array.from(tableBody.children).forEach((row, idx) => { if (idx > rowIndex) row.dataset.index = idx - 1; });
-        tr.remove();
-        analyzeData();
-    }
+    if (!e.target.dataset || e.target.dataset.action !== 'delete') return;
+    const tr = e.target.closest('tr');
+    const rowIndex = parseInt(tr.dataset.index, 10);
+    if (!(rowIndex >= 0)) return;
+    experimentData.splice(rowIndex, 1);
+    tr.remove();
+    Array.from(tableBody.children).forEach((row, idx) => { row.dataset.index = idx; });
+    analyzeData();
 });
 
-//  Matrice
-const matrix = {
-    multiply: (a, b) => a.map((r, i) => b[0].map((_, j) => r.reduce((s, e, k) => s + e * b[k][j], 0))),
-    transpose: a => a[0].map((_, i) => a.map(r => r[i])),
-    invert: m => {
-        const n = m.length, id = m.map((_, i) => m.map((_, j) => i === j ? 1 : 0));
-        const C = m.map((r, i) => [...r, ...id[i]]);
-        for (let i = 0; i < n; i++) {
-            let p = i;
-            while (p < n && C[p][i] === 0) p++;
-            
-            // FIX: Prevent 'undefined' crash by checking if p is out of bounds
-            if (p >= n || Math.abs(C[p][i]) < 1e-12) return null;
+document.getElementById('manual-start-btn').addEventListener('click', startManualMode);
 
-            [C[i], C[p]] = [C[p], C[i]];
-            const d = C[i][i];
-            for (let j = i; j < 2 * n; j++) C[i][j] /= d;
-            for (let k = 0; k < n; k++) {
-                if (k !== i) { const mu = C[k][i]; for (let j = i; j < 2 * n; j++) C[k][j] -= mu * C[i][j]; }
-            }
-        }
-        return C.map(r => r.slice(n));
-    }
+function startManualMode() {
+    const factors = [
+        { name: 'Residence Time', unit: 'min' },
+        { name: 'Molar Ratio B/A', unit: '' },
+        { name: 'Active Flow Fraction', unit: '' },
+        { name: 'Temperature', unit: 'C' }
+    ];
+    factorKeys = factors.map((f) => f.name);
+    experimentData = [{
+        id: 1,
+        settings: Object.fromEntries(factorKeys.map((k) => [k, ''])),
+        yield: null, selectivity: null, score: null
+    }];
+    renderTable(factors);
+    resultsSection.classList.remove('hidden');
+    uploadSection.classList.add('hidden');
+    analyzeData();   // FIX: manual mode never triggered an analysis pass.
+}
 
-};
-
-//  Factor Coding 
-// coded = 2*(x - xMin)/(xMax - xMin) - 1
-function codeValue(v, lo, hi) { return (hi === lo) ? 0 : 2 * (v - lo) / (hi - lo) - 1; }
-function uncodeValue(c, lo, hi) { return lo + (c + 1) / 2 * (hi - lo); }
-
-
-//  Analysis
+// =============================== ANALYSIS =================================
 /*
- * analyzeData:
- *  For each experiment, the weighted score is:
- *    score = wYield*(yield/100) + wSelectivity*(selectivity/100)
- *  This normalised composite [0,1] is the y-vector for the "Weighted Score" model.
+ * FIX #2 - weighted score.
+ *
+ * Previously:  score = wY*(yield??0)/100 + wS*(selectivity??0)/100
+ * which silently turned "not measured" into "measured 0%", and because
+ * getResponseValue('score') then never returned null, half-filled rows were
+ * fitted as genuine observations of zero.
+ *
+ * Now: a response only participates if it has data somewhere in the design
+ * (weights are renormalised over the participating responses), and a row's
+ * score is null unless every participating response is present. Null scores
+ * are excluded from the ranking, the table and the regression.
  */
+function computeScores() {
+    const wY = Number(yieldWeightSlider.value) / 100;
+    const wS = Number(selectivityWeightSlider.value) / 100;
+
+    const anyYield = experimentData.some((d) => d.yield !== null);
+    const anySelec = experimentData.some((d) => d.selectivity !== null);
+
+    let wYe = anyYield ? wY : 0;
+    let wSe = anySelec ? wS : 0;
+    const tot = wYe + wSe;
+    if (tot > 0) { wYe /= tot; wSe /= tot; }
+
+    experimentData.forEach((exp) => {
+        if (tot <= 0) { exp.score = null; return; }
+        const missing = (wYe > 0 && exp.yield === null) || (wSe > 0 && exp.selectivity === null);
+        exp.score = missing ? null : wYe * ((exp.yield ?? 0) / 100) + wSe * ((exp.selectivity ?? 0) / 100);
+    });
+}
+
 function analyzeData() {
-    if (experimentData.length === 0) return;
-    let bestYield = { value: -1, exp: null }, bestSelectivity = { value: -1, exp: null }, bestOverall = { value: -1, exp: null };
-    const wYield = yieldWeightSlider.value / 100, wSelectivity = selectivityWeightSlider.value / 100;
+    computeScores();
+
+    let bestYield       = { value: -Infinity, exp: null };
+    let bestSelectivity = { value: -Infinity, exp: null };
+    let bestOverall     = { value: -Infinity, exp: null };
 
     experimentData.forEach((exp, index) => {
-        const cy = exp.yield ?? 0, cs = exp.selectivity ?? 0;
-        exp.score = wYield * (cy / 100) + wSelectivity * (cs / 100);
-
-
         const scoreCell = tableBody.querySelector(`tr[data-index="${index}"] .score-cell`);
-        if (scoreCell) scoreCell.textContent = (exp.yield !== null || exp.selectivity !== null) ? exp.score.toFixed(3) : '-';
-        if (exp.yield       !== null && exp.yield       > bestYield.value)       bestYield       = { value: exp.yield,       exp };
+        if (scoreCell) scoreCell.textContent = (exp.score !== null) ? exp.score.toFixed(3) : '-';
+
+        if (exp.yield       !== null && exp.yield       > bestYield.value)       bestYield       = { value: exp.yield, exp };
         if (exp.selectivity !== null && exp.selectivity > bestSelectivity.value) bestSelectivity = { value: exp.selectivity, exp };
-        if ((exp.yield !== null || exp.selectivity !== null) && exp.score > bestOverall.value) bestOverall = { value: exp.score, exp };
+        if (exp.score       !== null && exp.score       > bestOverall.value)     bestOverall     = { value: exp.score, exp };
     });
 
     displayOptimum(bestYieldEl,       bestYieldExpEl,       bestYield,       '%');
     displayOptimum(bestSelectivityEl, bestSelectivityExpEl, bestSelectivity, '%');
     displayOptimum(bestOverallEl,     bestOverallExpEl,     bestOverall,     '', 3);
-    updateAdvancedVisualizations();
+
+    scheduleAdvancedUpdate();
 }
 
 function displayOptimum(valueEl, expEl, result, unit, precision = 1) {
@@ -608,140 +603,274 @@ function displayOptimum(valueEl, expEl, result, unit, precision = 1) {
     else { valueEl.textContent = '-'; expEl.textContent = ''; }
 }
 
-// Helper: valid response value 
-function getResponseValue(exp, key) {
-    if (key === 'score') return exp.score;   // score is always computed
-    return exp[key];                          // yield or selectivity (may be null)
+function getResponseValue(exp, key) { return exp[key]; }   // score may now be null
+
+// FIX (performance): re-fitting every model and repainting every canvas on
+// each keystroke was the main source of input lag.
+let advancedUpdateTimer = null;
+function scheduleAdvancedUpdate() {
+    if (advancedUpdateTimer) clearTimeout(advancedUpdateTimer);
+    advancedUpdateTimer = setTimeout(() => { advancedUpdateTimer = null; updateAdvancedVisualizations(); }, 250);
 }
 
-// fit a quadratic ou lineaire, dans -1 à 1
+// ====================== TWO-FACTOR RESPONSE SURFACE =======================
 /*
- *  [intercept, x, y, xy, x², y²]
+ * FIX #1 - the non-quadratic branch used to append two all-zero columns
+ * ([1, x, y, xy, 0, 0]), which made X'X singular, so invert() returned null
+ * and no contour was ever produced for a two-level design. The matrix now
+ * has exactly as many columns as terms, and the coefficient vector is padded
+ * to six afterwards so downstream code keeps its fixed layout:
+ *      [intercept, x, y, xy, x^2, y^2]
  */
 function buildModel2F(factorXName, factorYName, yKey) {
-    const dataPoints = experimentData.filter(d => {
+    const dataPoints = experimentData.filter((d) => {
         const rv = getResponseValue(d, yKey);
-        return rv !== null && rv !== undefined &&
-               d.settings[factorXName] != null && d.settings[factorXName] !== '' &&
-               d.settings[factorYName] != null && d.settings[factorYName] !== '';
+        return rv !== null && rv !== undefined && isFinite(rv) &&
+               isNum(d.settings[factorXName]) && isNum(d.settings[factorYName]);
     });
-    if (dataPoints.length < 4) return null;
 
-    const xRaw = dataPoints.map(p => p.settings[factorXName]);
-    const yRaw = dataPoints.map(p => p.settings[factorYName]);
-    const xMin = Math.min(...xRaw), xMax = Math.max(...xRaw);
-    const yMin = Math.min(...yRaw), yMax = Math.max(...yRaw);
+    const xRaw = dataPoints.map((p) => Number(p.settings[factorXName]));
+    const yRaw = dataPoints.map((p) => Number(p.settings[factorYName]));
     if (new Set(xRaw).size <= 1 || new Set(yRaw).size <= 1) return null;
 
-    const isQuad = new Set(xRaw).size >= 3 && new Set(yRaw).size >= 3 && dataPoints.length >= 6;
+    const xMin = Math.min(...xRaw), xMax = Math.max(...xRaw);
+    const yMin = Math.min(...yRaw), yMax = Math.max(...yRaw);
 
-    const Xmat = dataPoints.map(p => {
+    const isQuad  = new Set(xRaw).size >= 3 && new Set(yRaw).size >= 3 && dataPoints.length >= 6;
+    const nTerms  = isQuad ? 6 : 4;
+    if (dataPoints.length < nTerms) return null;
+
+    const Xmat = dataPoints.map((p) => {
         const xc = codeValue(p.settings[factorXName], xMin, xMax);
         const yc = codeValue(p.settings[factorYName], yMin, yMax);
-        return isQuad ? [1, xc, yc, xc*yc, xc*xc, yc*yc] : [1, xc, yc, xc*yc, 0, 0];
+        return isQuad ? [1, xc, yc, xc * yc, xc * xc, yc * yc] : [1, xc, yc, xc * yc];
     });
-    const yMat    = dataPoints.map(p => [getResponseValue(p, yKey)]);
+    const yMat    = dataPoints.map((p) => [Number(getResponseValue(p, yKey))]);
     const Xt      = matrix.transpose(Xmat);
     const XtX_inv = matrix.invert(matrix.multiply(Xt, Xmat));
     if (!XtX_inv) return null;
-    const B = matrix.multiply(XtX_inv, matrix.multiply(Xt, yMat)).map(c => c[0]);
 
-    return { coeffs: B, xMin, xMax, yMin, yMax, isQuad };
+    const B = matrix.multiply(XtX_inv, matrix.multiply(Xt, yMat)).map((c) => c[0]);
+    while (B.length < 6) B.push(0);     // pad x^2 / y^2 with exact zeros
+
+    return { coeffs: B, xMin, xMax, yMin, yMax, isQuad, n: dataPoints.length };
 }
 
-// Full N-Factor Model with Statistics 
+function findPredictedOptimum2F(model, responseName) {
+    const { coeffs, xMin, xMax, yMin, yMax } = model;
+    const predict = (xc, yc) =>
+        coeffs[0] + coeffs[1] * xc + coeffs[2] * yc + coeffs[3] * xc * yc + coeffs[4] * xc * xc + coeffs[5] * yc * yc;
 
-function buildModelWithStats(varyingFactors, yKey, isOptimDesign, useCoded = true) {
-    const dataPoints = experimentData.filter(d => {
+    let best = { xc: 0, yc: 0, z: -Infinity };
+    const STEPS = 50;
+    for (let i = 0; i <= STEPS; i++) {
+        for (let j = 0; j <= STEPS; j++) {
+            const xc = -1 + 2 * i / STEPS, yc = -1 + 2 * j / STEPS;
+            const z  = predict(xc, yc);
+            if (z > best.z) best = { xc, yc, z };
+        }
+    }
+    let capped = best.z;
+    if (responseName === 'yield' || responseName === 'selectivity') capped = clamp(capped, 0, 100);
+    return { x: uncodeValue(best.xc, xMin, xMax), y: uncodeValue(best.yc, yMin, yMax), z: capped, originalZ: best.z };
+}
+
+// =================== N-FACTOR MODEL WITH STATISTICS =======================
+/*
+ * FIX #3 - the fit is now ALWAYS performed on coded factors in [-1, 1].
+ * Fitting directly in actual units (the old useCoded = false path) produced
+ * X'X entries spanning many orders of magnitude - e.g. a temperature squared
+ * term of ~3e4 against an intercept of 1 - and with no pivoting the resulting
+ * coefficients and standard errors could be numerically meaningless.
+ *
+ * When actual-unit coefficients are requested they are obtained by an exact
+ * linear back-transformation A = T.B, with the covariance propagated as
+ * Cov(A) = T . Cov(B) . T', so the reported standard errors and confidence
+ * intervals stay correct.
+ */
+function buildUncodeMatrix(k, pairs, isQuad, m, h, p) {
+    const T = Array.from({ length: p }, () => new Array(p).fill(0));
+    const LIN = (i) => 1 + i;
+    const SQ  = (i) => 1 + k + i;
+    const INT = (t) => 1 + 2 * k + t;
+
+    // intercept
+    T[0][0] = 1;
+    for (let i = 0; i < k; i++) T[0][LIN(i)] = -m[i] / h[i];
+    if (isQuad) {
+        for (let i = 0; i < k; i++) T[0][SQ(i)] = (m[i] * m[i]) / (h[i] * h[i]);
+        pairs.forEach(([a, b], t) => { T[0][INT(t)] = (m[a] * m[b]) / (h[a] * h[b]); });
+    }
+    // linear terms
+    for (let i = 0; i < k; i++) {
+        T[LIN(i)][LIN(i)] = 1 / h[i];
+        if (isQuad) {
+            T[LIN(i)][SQ(i)] = -2 * m[i] / (h[i] * h[i]);
+            pairs.forEach(([a, b], t) => {
+                if (a === i)      T[LIN(i)][INT(t)] = -m[b] / (h[a] * h[b]);
+                else if (b === i) T[LIN(i)][INT(t)] = -m[a] / (h[a] * h[b]);
+            });
+        }
+    }
+    // pure quadratic and interaction terms
+    if (isQuad) {
+        for (let i = 0; i < k; i++) T[SQ(i)][SQ(i)] = 1 / (h[i] * h[i]);
+        pairs.forEach(([a, b], t) => { T[INT(t)][INT(t)] = 1 / (h[a] * h[b]); });
+    }
+    return T;
+}
+
+function buildModelWithStats(varyingFactors, yKey, isOptimDesign, actualUnits = false) {
+    const dataPoints = experimentData.filter((d) => {
         const rv = getResponseValue(d, yKey);
-        if (rv === null || rv === undefined) return false;
-        return varyingFactors.every(f => d.settings[f] != null && d.settings[f] !== '');
+        if (rv === null || rv === undefined || !isFinite(rv)) return false;
+        return varyingFactors.every((f) => isNum(d.settings[f]));
     });
-    if (dataPoints.length < 2) return null;
+    if (dataPoints.length < 3) return null;
 
     const bounds = {};
-    varyingFactors.forEach(f => {
-        const vals = dataPoints.map(p => p.settings[f]);
+    varyingFactors.forEach((f) => {
+        const vals = dataPoints.map((p) => Number(p.settings[f]));
         bounds[f] = { min: Math.min(...vals), max: Math.max(...vals) };
     });
 
-    const activeFacs = varyingFactors.filter(f => bounds[f].min !== bounds[f].max);
+    const activeFacs = varyingFactors.filter((f) => bounds[f].min !== bounds[f].max);
     if (activeFacs.length === 0) return null;
+    const k = activeFacs.length;
 
-    const termNames = ['Intercept'];
-    activeFacs.forEach(f => termNames.push(f));
+    // term order: intercept, linear, pure quadratic, interactions
+    const termNames = ['Intercept', ...activeFacs];
+    const pairs = [];
     if (isOptimDesign) {
-        activeFacs.forEach(f => termNames.push(`${f} \u00b2`));
-        for (let i = 0; i < activeFacs.length; i++)
-            for (let j = i + 1; j < activeFacs.length; j++)
-                termNames.push(`${activeFacs[i]} \u00d7 ${activeFacs[j]}`);
+        activeFacs.forEach((f) => termNames.push(`${f} \u00b2`));
+        for (let i = 0; i < k; i++) {
+            for (let j = i + 1; j < k; j++) { pairs.push([i, j]); termNames.push(`${activeFacs[i]} \u00d7 ${activeFacs[j]}`); }
+        }
     }
     const p = termNames.length;
-    if (dataPoints.length < p) return null; 
+    const n = dataPoints.length;
+    if (n < p) return null;
 
-    // X
-    const Xmat = dataPoints.map(dp => {
-        const rowValues = activeFacs.map(f => 
-            useCoded ? codeValue(dp.settings[f], bounds[f].min, bounds[f].max) : dp.settings[f]
-        );
-        const row = [1, ...rowValues];
+    const codedRow = (vals) => {
+        const row = [1, ...vals];
         if (isOptimDesign) {
-            rowValues.forEach(c => row.push(c * c));
-            for (let i = 0; i < rowValues.length; i++)
-                for (let j = i + 1; j < rowValues.length; j++)
-                    row.push(rowValues[i] * rowValues[j]);
+            vals.forEach((c) => row.push(c * c));
+            pairs.forEach(([i, j]) => row.push(vals[i] * vals[j]));
         }
         return row;
-    });
+    };
 
-    const yVec = dataPoints.map(dp => getResponseValue(dp, yKey));
-    const yMat = yVec.map(v => [v]);
+    const Xmat = dataPoints.map((dp) =>
+        codedRow(activeFacs.map((f) => codeValue(dp.settings[f], bounds[f].min, bounds[f].max))));
+    const yVec = dataPoints.map((dp) => Number(getResponseValue(dp, yKey)));
+    const yMat = yVec.map((v) => [v]);
 
     const Xt      = matrix.transpose(Xmat);
     const XtX_inv = matrix.invert(matrix.multiply(Xt, Xmat));
     if (!XtX_inv) return null;
-    const B = matrix.multiply(XtX_inv, matrix.multiply(Xt, yMat)).map(c => c[0]);
+    const Bc = matrix.multiply(XtX_inv, matrix.multiply(Xt, yMat)).map((c) => c[0]);
 
-    const n = dataPoints.length;
-    const fitted    = Xmat.map(row => row.reduce((s, v, i) => s + v * B[i], 0));
+    // ---- diagnostics (invariant under the coded <-> actual reparameterisation)
+    const fitted    = Xmat.map((row) => row.reduce((s, v, i) => s + v * Bc[i], 0));
     const residuals = yVec.map((y, i) => y - fitted[i]);
     const yMean     = yVec.reduce((a, b) => a + b, 0) / n;
 
     const SSres = residuals.reduce((s, r) => s + r * r, 0);
     const SStot = yVec.reduce((s, y) => s + (y - yMean) ** 2, 0);
-    const MSres = SSres / Math.max(n - p, 1);
 
-    const Rsq    = SStot > 0 ? 1 - SSres / SStot : 0;
-    const adjRsq = SStot > 0 ? 1 - (SSres / (n - p)) / (SStot / (n - 1)) : 0;
+    const df    = n - p;                                     // residual degrees of freedom
+    const MSres = df > 0 ? SSres / df : NaN;                 // FIX: no fabricated df
 
-    let press = 0;
+    const Rsq    = SStot > 0 ? 1 - SSres / SStot : NaN;
+    // FIX: guard the saturated / single-observation cases instead of dividing by zero.
+    const adjRsq = (SStot > 0 && df > 0 && n > 1) ? 1 - (SSres / df) / (SStot / (n - 1)) : NaN;
+
+    let press = 0, pressOk = true;
     for (let i = 0; i < n; i++) {
         const xi  = Xmat[i];
-        const hii = xi.reduce((s, v, r) =>
-            s + v * XtX_inv[r].reduce((ss, vv, c) => ss + vv * xi[c], 0), 0);
+        const hii = xi.reduce((s, v, r) => s + v * XtX_inv[r].reduce((ss, vv, c) => ss + vv * xi[c], 0), 0);
         const denom = 1 - hii;
-        if (Math.abs(denom) < 1e-10) continue;
+        if (Math.abs(denom) < 1e-10) { pressOk = false; continue; }
         press += (residuals[i] / denom) ** 2;
     }
-    const predRsq = SStot > 0 ? 1 - press / SStot : 0;
+    const predRsq = (SStot > 0 && pressOk) ? 1 - press / SStot : NaN;
 
     const stdDev = Math.sqrt(MSres);
-    const cv     = yMean !== 0 ? (stdDev / Math.abs(yMean)) * 100 : NaN;
+    const cv     = (yMean !== 0 && isFinite(stdDev)) ? (stdDev / Math.abs(yMean)) * 100 : NaN;
+    const adeqPrecision = isFinite(MSres) && MSres > 0
+        ? (Math.max(...fitted) - Math.min(...fitted)) / Math.sqrt(p * MSres / n)
+        : NaN;
 
-    const fittedMax     = Math.max(...fitted);
-    const fittedMin     = Math.min(...fitted);
-    const adeqPrecision = (fittedMax - fittedMin) / Math.sqrt(p * MSres / n);
+    // ---- coefficients, in the requested parameterisation
+    const covC = XtX_inv.map((row) => row.map((v) => v * MSres));
+    let B = Bc, cov = covC;
+    if (actualUnits) {
+        const mid  = activeFacs.map((f) => (bounds[f].min + bounds[f].max) / 2);
+        const half = activeFacs.map((f) => (bounds[f].max - bounds[f].min) / 2);
+        const T = buildUncodeMatrix(k, pairs, !!isOptimDesign, mid, half, p);
+        B   = matrix.multiply(T, Bc.map((v) => [v])).map((r) => r[0]);
+        cov = matrix.multiply(matrix.multiply(T, covC), matrix.transpose(T));
+    }
 
-    const seB   = B.map((_, i) => Math.sqrt(MSres * XtX_inv[i][i]));
-    const tCrit = 1.96;
+    const seB    = B.map((_, i) => Math.sqrt(Math.max(cov[i][i], 0)));
+    const tCrit  = tCritical(df);                            // FIX #5
     const ciLow  = B.map((b, i) => b - tCrit * seB[i]);
     const ciHigh = B.map((b, i) => b + tCrit * seB[i]);
 
-    return { termNames, B, seB, ciLow, ciHigh, n, p, stdDev, mean: yMean, cv, press, Rsq, adjRsq, predRsq, adeqPrecision };
+    const model = {
+        termNames, B, seB, ciLow, ciHigh,
+        Bcoded: Bc, bounds, activeFacs, pairs, isOptimDesign: !!isOptimDesign,
+        n, p, df, tCrit, actualUnits,
+        stdDev, mean: yMean, cv, press: pressOk ? press : NaN,
+        Rsq, adjRsq, predRsq, adeqPrecision
+    };
+
+    model.predictCoded = (coded) => codedRow(coded).reduce((s, v, i) => s + v * Bc[i], 0);
+    // FIX #4: predictions are coded against THIS model's own bounds and active
+    // factors, never against a set recomputed from a different row subset.
+    model.predict = (params) => {
+        const coded = activeFacs.map((f) => {
+            const v = params ? params[f] : undefined;
+            return isNum(v) ? clamp(codeValue(v, bounds[f].min, bounds[f].max), -1, 1) : 0;
+        });
+        return model.predictCoded(coded);
+    };
+    return model;
 }
 
+// -------------------------------------------------- N-factor optimum ------
+function findOptimum(varyingFactors, yKey, isOptimDesign) {
+    const model = buildModelWithStats(varyingFactors, yKey, isOptimDesign, false);
+    if (!model) return null;
+    const { activeFacs, bounds } = model;
+    const k = activeFacs.length;
 
-// stats
+    const GRID = Math.max(4, Math.round(Math.pow(400, 1 / k)));
+    let bestCoded = new Array(k).fill(0);
+    let bestZ = model.predictCoded(bestCoded);
+
+    const gridSearch = (dim, cur) => {
+        if (dim === k) { const z = model.predictCoded(cur); if (z > bestZ) { bestZ = z; bestCoded = [...cur]; } return; }
+        for (let i = 0; i <= GRID; i++) { cur[dim] = -1 + 2 * i / GRID; gridSearch(dim + 1, cur); }
+    };
+    gridSearch(0, new Array(k).fill(0));
+
+    let step = 0.5;
+    for (let iter = 0; iter < 2000; iter++) {
+        const candidate = bestCoded.map((c) => clamp(c + (Math.random() * 2 - 1) * step, -1, 1));
+        const z = model.predictCoded(candidate);
+        if (z > bestZ) { bestZ = z; bestCoded = candidate; }
+        if (iter % 200 === 199) step *= 0.5;
+    }
+
+    const params = {};
+    activeFacs.forEach((f, i) => { params[f] = uncodeValue(bestCoded[i], bounds[f].min, bounds[f].max); });
+
+    const cappedZ = (yKey === 'yield' || yKey === 'selectivity') ? clamp(bestZ, 0, 100) : bestZ;
+    return { z: bestZ, cappedZ, params, model };
+}
+
+// ============================== STATS TABLE ===============================
 function renderModelStatsTable(stats, responseName, containerId) {
     const container = document.getElementById(containerId);
     if (!container) return;
@@ -753,12 +882,13 @@ function renderModelStatsTable(stats, responseName, containerId) {
         score:       { hdr: 'text-purple-800', bg: 'bg-purple-50 border-purple-200', badge: 'bg-purple-100 text-purple-800', label: 'Weighted Score' }
     }[responseName] || { hdr: 'text-slate-800', bg: 'bg-slate-50 border-slate-200', badge: 'bg-slate-100 text-slate-800', label: responseName };
 
-    const fmt = (v, d = 4) => (isNaN(v) || !isFinite(v)) ? 'N/A' : v.toFixed(d);
+    const fmt = (v, d = 4) => (v === null || v === undefined || isNaN(v) || !isFinite(v)) ? 'N/A' : v.toFixed(d);
 
     const termRows = stats.termNames.map((name, i) => {
-        const sig = stats.ciLow[i] > 0 || stats.ciHigh[i] < 0;
+        const sig = isFinite(stats.ciLow[i]) && isFinite(stats.ciHigh[i]) &&
+                    (stats.ciLow[i] > 0 || stats.ciHigh[i] < 0);
         return `<tr class="border-b border-slate-100 hover:bg-slate-50${sig ? ' font-semibold' : ''}">
-            <td class="px-4 py-2 text-slate-800">${name}</td>
+            <td class="px-4 py-2 text-slate-800">${esc(name)}</td>
             <td class="px-4 py-2 text-right font-mono">${fmt(stats.B[i])}</td>
             <td class="px-4 py-2 text-right font-mono text-slate-500">${fmt(stats.seB[i])}</td>
             <td class="px-4 py-2 text-right font-mono text-slate-500">${fmt(stats.ciLow[i])}</td>
@@ -774,22 +904,25 @@ function renderModelStatsTable(stats, responseName, containerId) {
         ['R-Squared',       fmt(stats.Rsq)],
         ['Adj R-Squared',   fmt(stats.adjRsq)],
         ['Pred R-Squared',  fmt(stats.predRsq)],
-        ['Adeq. Precision', fmt(stats.adeqPrecision)],
+        ['Adeq. Precision', fmt(stats.adeqPrecision)]
     ].map(([lbl, val]) => `<tr class="border-b border-slate-100 hover:bg-slate-50">
         <td class="px-4 py-2 text-slate-700 font-medium">${lbl}</td>
         <td class="px-4 py-2 text-right font-mono font-semibold text-slate-900">${val}</td>
     </tr>`).join('');
 
+    const ciNote = stats.df >= 1
+        ? `95% CI uses t = ${stats.tCrit.toFixed(3)} (${stats.df} df).`
+        : `<span class="text-amber-700 font-semibold">Saturated model: 0 residual df, no error estimate is available.</span>`;
+
     container.innerHTML = `
     <div class="p-5 border rounded-xl ${cfg.bg}">
         <div class="flex items-center gap-3 mb-1">
-            <h3 class="font-bold text-xl ${cfg.hdr}">${cfg.label} Model Statistics</h3>
-            <span class="text-xs px-2 py-0.5 rounded-full font-medium ${cfg.badge}">n = ${stats.n} &nbsp;|&nbsp; p = ${stats.p}</span>
+            <h3 class="font-bold text-xl ${cfg.hdr}">${esc(cfg.label)} Model Statistics</h3>
+            <span class="text-xs px-2 py-0.5 rounded-full font-medium ${cfg.badge}">n = ${stats.n} &nbsp;|&nbsp; p = ${stats.p} &nbsp;|&nbsp; df = ${stats.df}</span>
         </div>
 
-        <p class="text-xs text-slate-500 mb-4">Coefficients are in <strong>actual units</strong>. &nbsp;95% CI uses t = 1.96. &nbsp;<strong>Bold</strong> rows have CIs excluding zero.</p>
+        <p class="text-xs text-slate-500 mb-4">Fitted on coded factors, coefficients reported in <strong>actual units</strong>. &nbsp;${ciNote} &nbsp;<strong>Bold</strong> rows have CIs excluding zero.</p>
         <div class="overflow-x-auto mb-4">
-
             <table class="w-full text-sm text-left stats-coeff-table">
                 <thead class="text-xs text-slate-600 uppercase bg-white bg-opacity-60">
                     <tr>
@@ -809,136 +942,31 @@ function renderModelStatsTable(stats, responseName, containerId) {
     </div>`;
 }
 
-// grid search
-function findPredictedOptimum2F(model, responseName) {
-    const { coeffs, xMin, xMax, yMin, yMax } = model;
-    const predict = (xc, yc) =>
-        coeffs[0] + coeffs[1]*xc + coeffs[2]*yc + coeffs[3]*xc*yc + coeffs[4]*xc*xc + coeffs[5]*yc*yc;
-
-    let best = { xc: 0, yc: 0, z: -Infinity };
-    const STEPS = 50;
-    for (let i = 0; i <= STEPS; i++) {
-        for (let j = 0; j <= STEPS; j++) {
-            const xc = -1 + 2 * i / STEPS, yc = -1 + 2 * j / STEPS;
-            const z  = predict(xc, yc);
-            if (z > best.z) best = { xc, yc, z };
-        }
-    }
-    let capped = best.z;
-    if (responseName === 'yield' || responseName === 'selectivity') capped = Math.max(0, Math.min(100, capped));
-    return { x: uncodeValue(best.xc, xMin, xMax), y: uncodeValue(best.yc, yMin, yMax), z: capped, originalZ: best.z };
-}
-
-// N factors, random walk
-function findOptimumRandomWalk(varyingFactors, yKey, isOptimDesign) {
-    const stats = buildModelWithStats(varyingFactors, yKey, isOptimDesign);
-    if (!stats) return null;
-
-    const dataPoints = experimentData.filter(d => {
-        const rv = getResponseValue(d, yKey);
-        return rv !== null && rv !== undefined &&
-               varyingFactors.every(f => d.settings[f] != null && d.settings[f] !== '');
-    });
-    const bounds = {};
-    varyingFactors.forEach(f => {
-        const vals = dataPoints.map(p => p.settings[f]);
-        bounds[f] = { min: Math.min(...vals), max: Math.max(...vals) };
-    });
-    const activeFacs = varyingFactors.filter(f => bounds[f].min !== bounds[f].max);
-    if (activeFacs.length === 0) return null;
-    const k = activeFacs.length;
-
-    const buildRow = (coded) => {
-        const row = [1, ...coded];
-        if (isOptimDesign) {
-            coded.forEach(c => row.push(c * c));
-            for (let i = 0; i < coded.length; i++)
-                for (let j = i + 1; j < coded.length; j++)
-                    row.push(coded[i] * coded[j]);
-        }
-        return row;
-    };
-    const predict = (coded) => buildRow(coded).reduce((s, v, i) => s + v * stats.B[i], 0);
-
-    // Coarse grid seed
-    const GRID = Math.max(4, Math.round(Math.pow(400, 1 / k)));
-    let bestCoded = new Array(k).fill(0), bestZ = predict(bestCoded);
-    const gridSearch = (dim, cur) => {
-        if (dim === k) { const z = predict(cur); if (z > bestZ) { bestZ = z; bestCoded = [...cur]; } return; }
-        for (let i = 0; i <= GRID; i++) { cur[dim] = -1 + 2 * i / GRID; gridSearch(dim + 1, cur); }
-    };
-    gridSearch(0, new Array(k).fill(0));
-
-    // Random-walk refinement
-    let step = 0.5;
-    for (let iter = 0; iter < 2000; iter++) {
-        const candidate = bestCoded.map(c => Math.max(-1, Math.min(1, c + (Math.random() * 2 - 1) * step)));
-        const z = predict(candidate);
-        if (z > bestZ) { bestZ = z; bestCoded = candidate; }
-        if (iter % 200 === 199) step *= 0.5;
-    }
-
-    const params = {};
-    activeFacs.forEach((f, i) => { params[f] = uncodeValue(bestCoded[i], bounds[f].min, bounds[f].max); });
-
-    let cappedZ = bestZ;
-    if (yKey === 'yield' || yKey === 'selectivity') cappedZ = Math.max(0, Math.min(100, bestZ));
-    return { z: bestZ, cappedZ, params };
-}
-
-
-// prediction 
-function predictResponseAt(params, varyingFactors, yKey, isOptimDesign) {
-    const stats = buildModelWithStats(varyingFactors, yKey, isOptimDesign, true);
-    if (!stats) return null;
-
-    const dataPoints = experimentData.filter(d => getResponseValue(d, yKey) !== null && varyingFactors.every(f => d.settings[f] != null));
-    if (dataPoints.length === 0) return null;
-
-    const bounds = {};
-    varyingFactors.forEach(f => {
-        const vals = dataPoints.map(p => p.settings[f]);
-        bounds[f] = { min: Math.min(...vals), max: Math.max(...vals) };
-    });
-
-    const activeFacs = varyingFactors.filter(f => bounds[f].min !== bounds[f].max);
-    const coded = activeFacs.map(f => codeValue(params[f], bounds[f].min, bounds[f].max));
-
-    const row = [1, ...coded];
-    if (isOptimDesign) {
-        coded.forEach(c => row.push(c * c));
-        for (let i = 0; i < coded.length; i++)
-            for (let j = i + 1; j < coded.length; j++)
-                row.push(coded[i] * coded[j]);
-    }
-    // Calculate and clamp between 0% and 100%
-    return Math.max(0, Math.min(100, row.reduce((s, v, i) => s + v * stats.B[i], 0)));
-}
-
-
-//  optimisation, with relative weight
+// ========================== GLOBAL OPTIMUM CARD ===========================
 function displayGlobalOptimum(responseName, varyingFactors, containerElement, isOptimDesign) {
     if (varyingFactors.length < 2) return;
-    const result = findOptimumRandomWalk(varyingFactors, responseName, isOptimDesign);
+    const result = findOptimum(varyingFactors, responseName, isOptimDesign);
     if (!result) return;
 
     let bgC, txC, hlC, title, displayVal, extraHtml = '';
-    
-    if (responseName === 'yield') {
-        bgC = 'bg-slate-50 border-slate-200'; txC = 'text-slate-800'; hlC = 'text-slate-900'; 
-        title = 'Yield Peak'; displayVal = `${result.cappedZ.toFixed(2)}%`;
-    } else if (responseName === 'selectivity') {
-        bgC = 'bg-slate-50 border-slate-200'; txC = 'text-slate-800'; hlC = 'text-slate-900'; 
-        title = 'Selectivity Peak'; displayVal = `${result.cappedZ.toFixed(2)}%`;
+
+    if (responseName === 'yield' || responseName === 'selectivity') {
+        bgC = 'bg-slate-50 border-slate-200'; txC = 'text-slate-800'; hlC = 'text-slate-900';
+        title = responseName === 'yield' ? 'Yield Peak' : 'Selectivity Peak';
+        displayVal = `${result.cappedZ.toFixed(2)}%`;
     } else {
-        bgC = 'bg-sci-50 border-sci-300'; txC = 'text-sci-900'; hlC = 'text-sci-700'; 
-        title = '🌟 Global Optimum (Weighted Score)'; 
+        bgC = 'bg-sci-50 border-sci-300'; txC = 'text-sci-900'; hlC = 'text-sci-700';
+        title = '\u{1F31F} Global Optimum (Weighted Score)';
         displayVal = `Score: ${result.z.toFixed(3)}`;
 
-        // Calculate expected Y and S at these optimal params
-        const predY = predictResponseAt(result.params, varyingFactors, 'yield', isOptimDesign);
-        const predS = predictResponseAt(result.params, varyingFactors, 'selectivity', isOptimDesign);
-        
+        // FIX #4: each response model codes result.params with its OWN bounds
+        // and active-factor list, so a differing row subset can no longer
+        // silently misalign the design vector against the coefficients.
+        const yModel = buildModelWithStats(varyingFactors, 'yield', isOptimDesign, false);
+        const sModel = buildModelWithStats(varyingFactors, 'selectivity', isOptimDesign, false);
+        const predY = yModel ? clamp(yModel.predict(result.params), 0, 100) : null;
+        const predS = sModel ? clamp(sModel.predict(result.params), 0, 100) : null;
+
         const yText = predY !== null ? `<span class="text-green-700 font-bold">${predY.toFixed(1)}%</span>` : 'N/A';
         const sText = predS !== null ? `<span class="text-blue-700 font-bold">${predS.toFixed(1)}%</span>` : 'N/A';
 
@@ -954,72 +982,62 @@ function displayGlobalOptimum(responseName, varyingFactors, containerElement, is
 
     const el = document.createElement('div');
     el.className = `mt-2 p-5 border rounded-xl shadow-sm ${bgC}`;
-    const paramsHtml = Object.entries(result.params).map(([k, v]) => `<li class="font-mono text-sm"><strong>${k}:</strong> ${v.toFixed(2)}</li>`).join('');
-    
+    const paramsHtml = Object.entries(result.params)
+        .map(([k, v]) => `<li class="font-mono text-sm"><strong>${esc(k)}:</strong> ${v.toFixed(2)}</li>`).join('');
+
     el.innerHTML = `
         <h4 class="font-bold text-lg ${txC}">${title}</h4>
-        <p class="text-sm mt-1 ${txC}">The mathematical model predicts a peak <strong class="${hlC}">${displayVal}</strong> at:</p>
+        <p class="text-sm mt-1 ${txC}">The model predicts a peak <strong class="${hlC}">${displayVal}</strong> at:</p>
         <ul class="list-disc list-inside mt-3 text-sm ${txC} space-y-1">${paramsHtml}</ul>
         ${extraHtml}`;
     containerElement.appendChild(el);
 }
 
-
-// main visual
+// ============================ MAIN VISUAL PASS ============================
 function updateAdvancedVisualizations() {
     contourPlotsContainer.innerHTML = '';
     predictedOptimaCard.classList.add('hidden');
     predictedYieldDisplay.classList.add('hidden');
     predictedSelectivityDisplay.classList.add('hidden');
+    predictedScoreDisplay.classList.add('hidden');
     modelStatsSection.classList.add('hidden');
-    ['yield-stats-container', 'selectivity-stats-container', 'score-stats-container'].forEach(id => {
-        document.getElementById(id).innerHTML = '';
-    });
+    ['yield-stats-container', 'selectivity-stats-container', 'score-stats-container']
+        .forEach((id) => { const el = document.getElementById(id); if (el) el.innerHTML = ''; });
 
-       const hasAnyData = experimentData.some(d =>
-        d.yield !== null || d.selectivity !== null
-    );
+    const hasAnyData = experimentData.some((d) => d.yield !== null || d.selectivity !== null);
     printPdfBtn.classList.toggle('hidden', !hasAnyData);
 
-
-    // Factors with at least 2 distinct values
-    const varyingFactors = factorKeys.filter(key => {
-        const vals = experimentData.map(e => e.settings[key]).filter(v => v != null && v !== '');
+    const varyingFactors = factorKeys.filter((key) => {
+        const vals = experimentData.map((e) => e.settings[key]).filter(isNum).map(Number);
         return new Set(vals).size > 1;
     });
     if (varyingFactors.length < 2) { contourPlotsPlaceholder.style.display = 'block'; return; }
     contourPlotsPlaceholder.style.display = 'none';
 
-    // §7.2 design type: quadratic if every active factor has ≥ 3 levels
-    const isOptimDesign = varyingFactors.every(key => {
-        const vals = experimentData.map(e => e.settings[key]).filter(v => v != null && v !== '');
+    // quadratic model only if every active factor has >= 3 levels
+    const isOptimDesign = varyingFactors.every((key) => {
+        const vals = experimentData.map((e) => e.settings[key]).filter(isNum).map(Number);
         return new Set(vals).size >= 3;
     });
 
-    const hasYield       = experimentData.some(d => d.yield       !== null);
-    const hasSelectivity = experimentData.some(d => d.selectivity !== null);
-    const hasScore       = experimentData.some(d => d.yield !== null || d.selectivity !== null);
+    const hasYield       = experimentData.some((d) => d.yield       !== null);
+    const hasSelectivity = experimentData.some((d) => d.selectivity !== null);
+    const hasScore       = experimentData.some((d) => d.score       !== null);
 
+    // actualUnits = true: fitted on coded factors, coefficients back-transformed.
+    const yieldStats = hasYield       ? buildModelWithStats(varyingFactors, 'yield',       isOptimDesign, true) : null;
+    const selecStats = hasSelectivity ? buildModelWithStats(varyingFactors, 'selectivity', isOptimDesign, true) : null;
+    const scoreStats = hasScore       ? buildModelWithStats(varyingFactors, 'score',       isOptimDesign, true) : null;
 
-    // N stats, un peu étrange ici, à vérifier
-    // Pass 'false' to evaluate coefficients and standard errors in actual parameter units
-    const yieldStats = hasYield       ? buildModelWithStats(varyingFactors, 'yield',       isOptimDesign, false) : null;
-    const selecStats = hasSelectivity ? buildModelWithStats(varyingFactors, 'selectivity', isOptimDesign, false) : null;
-    const scoreStats = hasScore       ? buildModelWithStats(varyingFactors, 'score',       isOptimDesign, false) : null;
+    if (yieldStats || selecStats || scoreStats) {
+        modelStatsSection.classList.remove('hidden');
+        renderModelStatsTable(yieldStats, 'yield',       'yield-stats-container');
+        renderModelStatsTable(selecStats, 'selectivity', 'selectivity-stats-container');
+        renderModelStatsTable(scoreStats, 'score',       'score-stats-container');
+    } else {
+        modelStatsSection.classList.add('hidden');
+    }
 
-//pdf export global
-if (yieldStats || selecStats || scoreStats) {
-    modelStatsSection.classList.remove('hidden');
-
-    renderModelStatsTable(yieldStats, 'yield',       'yield-stats-container');
-    renderModelStatsTable(selecStats, 'selectivity', 'selectivity-stats-container');
-    renderModelStatsTable(scoreStats, 'score',       'score-stats-container');
-
-} else {
-    modelStatsSection.classList.add('hidden');
-}
-
-    // contour plots, 
     predictedYieldDisplay.innerHTML       = `<h3 class="font-semibold text-green-800 mb-2">Predicted Optimums (Yield)</h3>`;
     predictedSelectivityDisplay.innerHTML = `<h3 class="font-semibold text-blue-800 mb-2">Predicted Optimums (Selectivity)</h3>`;
 
@@ -1035,36 +1053,38 @@ if (yieldStats || selecStats || scoreStats) {
         plotWrapper.className = 'lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-8 border-t pt-8';
         if (idx === 0) plotWrapper.classList.remove('border-t', 'pt-8');
 
-        // Yield contour
         const yieldModel = hasYield ? buildModel2F(fX, fY, 'yield') : null;
         if (yieldModel) {
             hasYieldModels = true;
             const opt = findPredictedOptimum2F(yieldModel, 'yield');
-            if (opt.z > -Infinity) {
-                const pr = document.createElement('div');
-                pr.className = 'mt-3 pt-3 border-t border-green-200';
-                pr.innerHTML = `<p class="font-medium text-green-700">${fX} &amp; ${fY}</p><p class="text-sm">Peak: <strong class="text-green-600">${opt.z.toFixed(2)}%</strong> at (${fX}: ${opt.x.toFixed(2)}, ${fY}: ${opt.y.toFixed(2)})</p>`;
-                predictedYieldDisplay.appendChild(pr);
-            }
+            const pr = document.createElement('div');
+            pr.className = 'mt-3 pt-3 border-t border-green-200';
+            pr.innerHTML = `<p class="font-medium text-green-700">${esc(fX)} &amp; ${esc(fY)}</p>` +
+                `<p class="text-sm">Peak: <strong class="text-green-600">${opt.z.toFixed(2)}%</strong> at (${esc(fX)}: ${opt.x.toFixed(2)}, ${esc(fY)}: ${opt.y.toFixed(2)})` +
+                `${yieldModel.isQuad ? '' : ' <span class="text-slate-400">- linear + interaction model</span>'}</p>`;
+            predictedYieldDisplay.appendChild(pr);
+
             const pd = document.createElement('div'), cid = `contour-yield-${idx}`;
-            pd.innerHTML = `<h3 class="font-medium text-center text-slate-600 mb-2">Yield vs ${fX} &amp; ${fY}</h3><canvas id="${cid}" class="w-full h-80"></canvas>`;
+            pd.innerHTML = `<h3 class="font-medium text-center text-slate-600 mb-2">Yield vs ${esc(fX)} &amp; ${esc(fY)}</h3>` +
+                           `<canvas id="${cid}" class="block mx-auto max-w-full"></canvas>`;
             plotWrapper.appendChild(pd);
             setTimeout(() => draw2DContourPlot(cid, yieldModel, fX, fY, 'yield', opt), 0);
         }
 
-        // Selectivity contour
         const selecModel = hasSelectivity ? buildModel2F(fX, fY, 'selectivity') : null;
         if (selecModel) {
             hasSelecModels = true;
             const opt = findPredictedOptimum2F(selecModel, 'selectivity');
-            if (opt.z > -Infinity) {
-                const pr = document.createElement('div');
-                pr.className = 'mt-3 pt-3 border-t border-blue-200';
-                pr.innerHTML = `<p class="font-medium text-blue-700">${fX} &amp; ${fY}</p><p class="text-sm">Peak: <strong class="text-blue-600">${opt.z.toFixed(2)}%</strong> at (${fX}: ${opt.x.toFixed(2)}, ${fY}: ${opt.y.toFixed(2)})</p>`;
-                predictedSelectivityDisplay.appendChild(pr);
-            }
+            const pr = document.createElement('div');
+            pr.className = 'mt-3 pt-3 border-t border-blue-200';
+            pr.innerHTML = `<p class="font-medium text-blue-700">${esc(fX)} &amp; ${esc(fY)}</p>` +
+                `<p class="text-sm">Peak: <strong class="text-blue-600">${opt.z.toFixed(2)}%</strong> at (${esc(fX)}: ${opt.x.toFixed(2)}, ${esc(fY)}: ${opt.y.toFixed(2)})` +
+                `${selecModel.isQuad ? '' : ' <span class="text-slate-400">- linear + interaction model</span>'}</p>`;
+            predictedSelectivityDisplay.appendChild(pr);
+
             const pd = document.createElement('div'), cid = `contour-selectivity-${idx}`;
-            pd.innerHTML = `<h3 class="font-medium text-center text-slate-600 mb-2">Selectivity vs ${fX} &amp; ${fY}</h3><canvas id="${cid}" class="w-full h-80"></canvas>`;
+            pd.innerHTML = `<h3 class="font-medium text-center text-slate-600 mb-2">Selectivity vs ${esc(fX)} &amp; ${esc(fY)}</h3>` +
+                           `<canvas id="${cid}" class="block mx-auto max-w-full"></canvas>`;
             plotWrapper.appendChild(pd);
             setTimeout(() => draw2DContourPlot(cid, selecModel, fX, fY, 'selectivity', opt), 0);
         }
@@ -1072,16 +1092,14 @@ if (yieldStats || selecStats || scoreStats) {
         if (yieldModel || selecModel) contourPlotsContainer.appendChild(plotWrapper);
     });
 
-    
     if (hasYieldModels || hasSelecModels) {
         predictedOptimaCard.classList.remove('hidden');
-        
-        // Render Score Optimum (if any models exist, score exists)
-        predictedScoreDisplay.classList.remove('hidden');
-        predictedScoreDisplay.innerHTML = '';
-        displayGlobalOptimum('score', varyingFactors, predictedScoreDisplay, isOptimDesign);
 
-        // Render Individual Optimums
+        if (hasScore) {
+            predictedScoreDisplay.classList.remove('hidden');
+            predictedScoreDisplay.innerHTML = '';
+            displayGlobalOptimum('score', varyingFactors, predictedScoreDisplay, isOptimDesign);
+        }
         if (hasYieldModels) {
             predictedYieldDisplay.classList.remove('hidden');
             displayGlobalOptimum('yield', varyingFactors, predictedYieldDisplay, isOptimDesign);
@@ -1091,10 +1109,9 @@ if (yieldStats || selecStats || scoreStats) {
             displayGlobalOptimum('selectivity', varyingFactors, predictedSelectivityDisplay, isOptimDesign);
         }
     }
-
 }
 
-// 2D Contour Plot 
+// ============================= CONTOUR PLOT ===============================
 function draw2DContourPlot(canvasId, model, factorXName, factorYName, responseName, optimum) {
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
@@ -1104,51 +1121,44 @@ function draw2DContourPlot(canvasId, model, factorXName, factorYName, responseNa
     const plotW = width - padding * 2, plotH = height - padding * 2;
     canvas.width = width; canvas.height = height;
 
-ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, width, height);
 
-
-
-
     const { coeffs, xMin, xMax, yMin, yMax } = model;
-
-    // Predict in coded space (model was fitted on coded values)
     const predict = (xReal, yReal) => {
         const xc = codeValue(xReal, xMin, xMax), yc = codeValue(yReal, yMin, yMax);
-        return coeffs[0] + coeffs[1]*xc + coeffs[2]*yc + coeffs[3]*xc*yc + coeffs[4]*xc*xc + coeffs[5]*yc*yc;
+        return coeffs[0] + coeffs[1] * xc + coeffs[2] * yc + coeffs[3] * xc * yc +
+               coeffs[4] * xc * xc + coeffs[5] * yc * yc;
     };
 
     const imageData = ctx.createImageData(plotW, plotH);
-    let minZ = Infinity, maxZ = -Infinity;
-    const zValues = [];
+    const zValues = new Float64Array(plotW * plotH);
+    let minZ = Infinity, maxZ = -Infinity, idx = 0;
 
     for (let j = 0; j < plotH; j++) {
         for (let i = 0; i < plotW; i++) {
             const x = xMin + (i / (plotW - 1)) * (xMax - xMin);
             const y = yMin + ((plotH - 1 - j) / (plotH - 1)) * (yMax - yMin);
             const z = predict(x, y);
-            zValues.push(z);
+            zValues[idx++] = z;
             if (z < minZ) minZ = z;
             if (z > maxZ) maxZ = z;
         }
     }
 
+    const span = (maxZ - minZ) || 1;
     for (let i = 0; i < zValues.length; i++) {
-        let normZ = (zValues[i] - minZ) / ((maxZ - minZ) || 1);
-        if (responseName !== 'score') normZ = Math.max(0, Math.min(1, normZ));
-        const hue = 240 - normZ * 240;
-        const color = new THREE.Color();
-        color.setHSL(hue / 360, 0.9, 0.5);
+        const normZ = (zValues[i] - minZ) / span;
+        const hue = 240 - normZ * 240;                  // blue -> red
+        const [r, g, b] = hslToRgb(hue / 360, 0.9, 0.5);
         const p = i * 4;
-        imageData.data[p] = color.r * 255; imageData.data[p+1] = color.g * 255;
-        imageData.data[p+2] = color.b * 255; imageData.data[p+3] = 255;
+        imageData.data[p] = r; imageData.data[p + 1] = g; imageData.data[p + 2] = b; imageData.data[p + 3] = 255;
     }
     ctx.putImageData(imageData, padding, padding);
 
-    // Axes labels (in real units)
     ctx.fillStyle = '#334155'; ctx.font = '12px Inter, sans-serif';
     ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    ctx.fillText(xMin.toFixed(1), padding,        height - padding + 8);
+    ctx.fillText(xMin.toFixed(1), padding, height - padding + 8);
     ctx.fillText(xMax.toFixed(1), width - padding, height - padding + 8);
     ctx.font = 'bold 12px Inter, sans-serif';
     ctx.fillText(factorXName, width / 2, height - padding + 24);
@@ -1164,17 +1174,97 @@ ctx.fillStyle = '#ffffff';
     ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 1;
     ctx.strokeRect(padding, padding, plotW, plotH);
 
-    // Star at optimum (real-unit coordinates)
     if (optimum) {
         let optX = padding + ((optimum.x - xMin) / (xMax - xMin)) * plotW;
         let optY = height - padding - ((optimum.y - yMin) / (yMax - yMin)) * plotH;
-        optX = Math.max(padding + 10, Math.min(width - padding - 10, optX));
-        optY = Math.max(padding + 10, Math.min(height - padding - 10, optY));
+        optX = clamp(optX, padding + 10, width - padding - 10);
+        optY = clamp(optY, padding + 10, height - padding - 10);
         ctx.font = '24px sans-serif'; ctx.fillStyle = '#fbbf24'; ctx.strokeStyle = '#000';
         ctx.lineWidth = 1.5; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.strokeText('\u2605', optX, optY); ctx.fillText('\u2605', optX, optY);
     }
 }
+
+// ============================== PDF EXPORT ================================
+printPdfBtn.addEventListener('click', generatePDF);
+
+function generatePDF() {
+    if (!window.jspdf || !window.jspdf.jsPDF) { customAlert('The PDF library could not be loaded. Check your network connection.'); return; }
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'landscape' });
+
+    const now = new Date();
+    const pad = (n) => n.toString().padStart(2, '0');
+    const fileTimestamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}h${pad(now.getMinutes())}m${pad(now.getSeconds())}s`;
+
+    doc.setFontSize(18);
+    doc.setTextColor(15, 23, 42);
+    doc.text('Experiment Data Analyzer Report', 14, 20);
+
+    doc.setFontSize(9);
+    doc.setTextColor(100, 116, 139);
+    doc.text(`Generated: ${now.toLocaleString()}`, 14, 26);
+    doc.text(`Source: ${window.location.href}`, 14, 31);
+
+    doc.setFontSize(11);
+    doc.setTextColor(71, 85, 105);
+    doc.text(`Peak Yield: ${bestYieldEl.textContent} ${bestYieldExpEl.textContent}`, 14, 41);
+    doc.text(`Peak Selectivity: ${bestSelectivityEl.textContent} ${bestSelectivityExpEl.textContent}`, 14, 48);
+    doc.text(`Best Score: ${bestOverallEl.textContent} ${bestOverallExpEl.textContent}`, 14, 55);
+
+    // local names: do NOT shadow the module-level tableHead / tableBody refs
+    const pdfHead = [['Exp #', ...factorKeys, 'Yield (%)', 'Selectivity (%)', 'Score']];
+    const pdfBody = experimentData.map((exp) => [
+        exp.id,
+        ...factorKeys.map((k) => (isNum(exp.settings[k]) ? exp.settings[k] : '-')),
+        exp.yield !== null ? exp.yield : '-',
+        exp.selectivity !== null ? exp.selectivity : '-',
+        exp.score !== null ? exp.score.toFixed(3) : '-'      // 0.000 is a value, not a blank
+    ]);
+
+    doc.autoTable({
+        startY: 63, head: pdfHead, body: pdfBody, theme: 'grid',
+        headStyles: { fillColor: [14, 165, 233], textColor: 255, fontStyle: 'bold' },
+        styles: { fontSize: 9, halign: 'center', cellPadding: 3 }
+    });
+
+    const statTables = document.querySelectorAll('.stats-coeff-table, .stats-summary-table');
+    if (statTables.length > 0) {
+        doc.addPage();
+        doc.setFontSize(16);
+        doc.text('Model Statistics', 14, 20);
+        let currentY = 30;
+
+        statTables.forEach((table, index) => {
+            if (table.classList.contains('stats-coeff-table')) {
+                const wrap = table.closest('.p-5');
+                const h3 = wrap ? wrap.querySelector('h3') : null;
+                if (h3) { doc.setFontSize(12); doc.text(h3.innerText, 14, currentY); currentY += 5; }
+            }
+            doc.autoTable({ html: table, startY: currentY, theme: 'grid', styles: { fontSize: 8 }, margin: { bottom: 20 } });
+            currentY = doc.lastAutoTable.finalY + 10;
+            if (currentY > 170 && index < statTables.length - 1) { doc.addPage(); currentY = 20; }
+        });
+    }
+
+    const canvases = document.querySelectorAll('#contour-plots-container canvas');
+    if (canvases.length > 0) {
+        doc.addPage();
+        doc.setFontSize(16);
+        doc.text('Response Surface Plots', 14, 20);
+
+        let yOffset = 30, xOffset = 14;
+        canvases.forEach((canvas, index) => {
+            doc.addImage(canvas.toDataURL('image/jpeg', 1.0), 'JPEG', xOffset, yOffset, 100, 100);
+            xOffset += 110;
+            if (xOffset > 200) { xOffset = 14; yOffset += 110; }
+            if (yOffset > 100 && index < canvases.length - 1 && xOffset === 14) { doc.addPage(); yOffset = 30; }
+        });
+    }
+
+    doc.save(`Experimental_Report_${fileTimestamp}.pdf`);
+}
+
 </script>
 </body>
 </html>
