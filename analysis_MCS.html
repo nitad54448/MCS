@@ -150,7 +150,7 @@
 
             <div class="card">
                 <h2 class="text-lg font-semibold text-slate-800 mb-2">Response Surfaces</h2>
-                <p id="contour-plots-placeholder" class="text-sm text-slate-500 mb-4">Enter at least 6 varied experiments to generate 2D contour models.</p>
+                <p id="contour-plots-placeholder" class="text-sm text-slate-500 mb-4">Enter sufficient complete experiments to fit the full model and its contour slices.</p>
                 <div id="contour-plots-container" class="grid grid-cols-1 lg:grid-cols-2 gap-8"></div>
             </div>
 
@@ -184,7 +184,7 @@
 </div>
 
 <footer class="fixed bottom-0 w-full bg-white border-t border-slate-200 py-2 text-center z-40 no-print">
-    <p class="text-[10px] text-slate-400 font-mono uppercase tracking-widest">v14.7 - 01 Sept 2026 - NitaD & MCS Univ Paris-Saclay</p>
+    <p class="text-[10px] text-slate-400 font-mono uppercase tracking-widest">v14.8 - 20 Sept 2026 - NitaD & MCS Univ Paris-Saclay</p>
 </footer>
 
 
@@ -614,46 +614,45 @@ function scheduleAdvancedUpdate() {
 }
 
 // ====================== TWO-FACTOR RESPONSE SURFACE =======================
-/*
- * FIX #1 - the non-quadratic branch used to append two all-zero columns
- * ([1, x, y, xy, 0, 0]), which made X'X singular, so invert() returned null
- * and no contour was ever produced for a two-level design. The matrix now
- * has exactly as many columns as terms, and the coefficient vector is padded
- * to six afterwards so downstream code keeps its fixed layout:
- *      [intercept, x, y, xy, x^2, y^2]
- */
-function buildModel2F(factorXName, factorYName, yKey) {
-    const dataPoints = experimentData.filter((d) => {
-        const rv = getResponseValue(d, yKey);
-        return rv !== null && rv !== undefined && isFinite(rv) &&
-               isNum(d.settings[factorXName]) && isNum(d.settings[factorYName]);
+// Slice the full fitted model with all other active factors at their midpoints.
+function buildModel2F(factorXName, factorYName, yKey, fullModel) {
+    if (fullModel === undefined) {
+        const varying = factorKeys.filter((f) => new Set(experimentData
+            .map((d) => d.settings[f]).filter(isNum).map(Number)).size > 1);
+        const quadratic = varying.every((f) => new Set(experimentData
+            .map((d) => d.settings[f]).filter(isNum).map(Number)).size >= 3);
+        fullModel = buildModelWithStats(varying, yKey, quadratic, false);
+    }
+    if (!fullModel) return null;
+    const { activeFacs, bounds, Bcoded, pairs, isOptimDesign, n } = fullModel;
+    const ix = activeFacs.indexOf(factorXName), iy = activeFacs.indexOf(factorYName);
+    if (ix < 0 || iy < 0) return null;
+    const k = activeFacs.length;
+    const interactionIndex = pairs.findIndex(([a, b]) =>
+        (a === ix && b === iy) || (a === iy && b === ix));
+    const interactionOffset = 1 + k + (isOptimDesign ? k : 0);
+    const coeffs = [
+        Bcoded[0], Bcoded[1 + ix], Bcoded[1 + iy],
+        interactionIndex < 0 ? 0 : Bcoded[interactionOffset + interactionIndex],
+        isOptimDesign ? Bcoded[1 + k + ix] : 0,
+        isOptimDesign ? Bcoded[1 + k + iy] : 0
+    ];
+    const heldSettings = {};
+    activeFacs.forEach((f, i) => {
+        if (i !== ix && i !== iy) heldSettings[f] = (bounds[f].min + bounds[f].max) / 2;
     });
+    return {
+        coeffs, xMin: bounds[factorXName].min, xMax: bounds[factorXName].max,
+        yMin: bounds[factorYName].min, yMax: bounds[factorYName].max,
+        isQuad: isOptimDesign, n, heldSettings
+    };
+}
 
-    const xRaw = dataPoints.map((p) => Number(p.settings[factorXName]));
-    const yRaw = dataPoints.map((p) => Number(p.settings[factorYName]));
-    if (new Set(xRaw).size <= 1 || new Set(yRaw).size <= 1) return null;
-
-    const xMin = Math.min(...xRaw), xMax = Math.max(...xRaw);
-    const yMin = Math.min(...yRaw), yMax = Math.max(...yRaw);
-
-    const isQuad  = new Set(xRaw).size >= 3 && new Set(yRaw).size >= 3 && dataPoints.length >= 6;
-    const nTerms  = isQuad ? 6 : 4;
-    if (dataPoints.length < nTerms) return null;
-
-    const Xmat = dataPoints.map((p) => {
-        const xc = codeValue(p.settings[factorXName], xMin, xMax);
-        const yc = codeValue(p.settings[factorYName], yMin, yMax);
-        return isQuad ? [1, xc, yc, xc * yc, xc * xc, yc * yc] : [1, xc, yc, xc * yc];
-    });
-    const yMat    = dataPoints.map((p) => [Number(getResponseValue(p, yKey))]);
-    const Xt      = matrix.transpose(Xmat);
-    const XtX_inv = matrix.invert(matrix.multiply(Xt, Xmat));
-    if (!XtX_inv) return null;
-
-    const B = matrix.multiply(XtX_inv, matrix.multiply(Xt, yMat)).map((c) => c[0]);
-    while (B.length < 6) B.push(0);     // pad x^2 / y^2 with exact zeros
-
-    return { coeffs: B, xMin, xMax, yMin, yMax, isQuad, n: dataPoints.length };
+function sliceConditions(model) {
+    const held = Object.entries(model.heldSettings || {});
+    return held.length
+        ? 'Held at midpoint: ' + held.map(([f, v]) => `${f} = ${v.toFixed(2)}`).join('; ')
+        : 'All varying factors shown.';
 }
 
 function findPredictedOptimum2F(model, responseName) {
@@ -692,31 +691,31 @@ function buildUncodeMatrix(k, pairs, isQuad, m, h, p) {
     const T = Array.from({ length: p }, () => new Array(p).fill(0));
     const LIN = (i) => 1 + i;
     const SQ  = (i) => 1 + k + i;
-    const INT = (t) => 1 + 2 * k + t;
+    const INT = (t) => 1 + k + (isQuad ? k : 0) + t;
 
     // intercept
     T[0][0] = 1;
     for (let i = 0; i < k; i++) T[0][LIN(i)] = -m[i] / h[i];
     if (isQuad) {
         for (let i = 0; i < k; i++) T[0][SQ(i)] = (m[i] * m[i]) / (h[i] * h[i]);
-        pairs.forEach(([a, b], t) => { T[0][INT(t)] = (m[a] * m[b]) / (h[a] * h[b]); });
     }
+    pairs.forEach(([a, b], t) => { T[0][INT(t)] = (m[a] * m[b]) / (h[a] * h[b]); });
     // linear terms
     for (let i = 0; i < k; i++) {
         T[LIN(i)][LIN(i)] = 1 / h[i];
         if (isQuad) {
             T[LIN(i)][SQ(i)] = -2 * m[i] / (h[i] * h[i]);
-            pairs.forEach(([a, b], t) => {
-                if (a === i)      T[LIN(i)][INT(t)] = -m[b] / (h[a] * h[b]);
-                else if (b === i) T[LIN(i)][INT(t)] = -m[a] / (h[a] * h[b]);
-            });
         }
+        pairs.forEach(([a, b], t) => {
+            if (a === i)      T[LIN(i)][INT(t)] = -m[b] / (h[a] * h[b]);
+            else if (b === i) T[LIN(i)][INT(t)] = -m[a] / (h[a] * h[b]);
+        });
     }
     // pure quadratic and interaction terms
     if (isQuad) {
         for (let i = 0; i < k; i++) T[SQ(i)][SQ(i)] = 1 / (h[i] * h[i]);
-        pairs.forEach(([a, b], t) => { T[INT(t)][INT(t)] = 1 / (h[a] * h[b]); });
     }
+    pairs.forEach(([a, b], t) => { T[INT(t)][INT(t)] = 1 / (h[a] * h[b]); });
     return T;
 }
 
@@ -743,9 +742,10 @@ function buildModelWithStats(varyingFactors, yKey, isOptimDesign, actualUnits = 
     const pairs = [];
     if (isOptimDesign) {
         activeFacs.forEach((f) => termNames.push(`${f} \u00b2`));
-        for (let i = 0; i < k; i++) {
-            for (let j = i + 1; j < k; j++) { pairs.push([i, j]); termNames.push(`${activeFacs[i]} \u00d7 ${activeFacs[j]}`); }
-        }
+    }
+    // Include two-factor interactions in both two-level and quadratic models.
+    for (let i = 0; i < k; i++) {
+        for (let j = i + 1; j < k; j++) { pairs.push([i, j]); termNames.push(`${activeFacs[i]} \u00d7 ${activeFacs[j]}`); }
     }
     const p = termNames.length;
     const n = dataPoints.length;
@@ -755,8 +755,8 @@ function buildModelWithStats(varyingFactors, yKey, isOptimDesign, actualUnits = 
         const row = [1, ...vals];
         if (isOptimDesign) {
             vals.forEach((c) => row.push(c * c));
-            pairs.forEach(([i, j]) => row.push(vals[i] * vals[j]));
         }
+        pairs.forEach(([i, j]) => row.push(vals[i] * vals[j]));
         return row;
     };
 
@@ -1053,7 +1053,7 @@ function updateAdvancedVisualizations() {
         plotWrapper.className = 'lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-8 border-t pt-8';
         if (idx === 0) plotWrapper.classList.remove('border-t', 'pt-8');
 
-        const yieldModel = hasYield ? buildModel2F(fX, fY, 'yield') : null;
+        const yieldModel = hasYield ? buildModel2F(fX, fY, 'yield', yieldStats) : null;
         if (yieldModel) {
             hasYieldModels = true;
             const opt = findPredictedOptimum2F(yieldModel, 'yield');
@@ -1061,7 +1061,8 @@ function updateAdvancedVisualizations() {
             pr.className = 'mt-3 pt-3 border-t border-green-200';
             pr.innerHTML = `<p class="font-medium text-green-700">${esc(fX)} &amp; ${esc(fY)}</p>` +
                 `<p class="text-sm">Peak: <strong class="text-green-600">${opt.z.toFixed(2)}%</strong> at (${esc(fX)}: ${opt.x.toFixed(2)}, ${esc(fY)}: ${opt.y.toFixed(2)})` +
-                `${yieldModel.isQuad ? '' : ' <span class="text-slate-400">- linear + interaction model</span>'}</p>`;
+                `${yieldModel.isQuad ? '' : ' <span class="text-slate-400">- linear + interaction model</span>'}</p>` +
+                `<p class="text-xs text-slate-500">${esc(sliceConditions(yieldModel))}</p>`;
             predictedYieldDisplay.appendChild(pr);
 
             const pd = document.createElement('div'), cid = `contour-yield-${idx}`;
@@ -1071,7 +1072,7 @@ function updateAdvancedVisualizations() {
             setTimeout(() => draw2DContourPlot(cid, yieldModel, fX, fY, 'yield', opt), 0);
         }
 
-        const selecModel = hasSelectivity ? buildModel2F(fX, fY, 'selectivity') : null;
+        const selecModel = hasSelectivity ? buildModel2F(fX, fY, 'selectivity', selecStats) : null;
         if (selecModel) {
             hasSelecModels = true;
             const opt = findPredictedOptimum2F(selecModel, 'selectivity');
@@ -1079,7 +1080,8 @@ function updateAdvancedVisualizations() {
             pr.className = 'mt-3 pt-3 border-t border-blue-200';
             pr.innerHTML = `<p class="font-medium text-blue-700">${esc(fX)} &amp; ${esc(fY)}</p>` +
                 `<p class="text-sm">Peak: <strong class="text-blue-600">${opt.z.toFixed(2)}%</strong> at (${esc(fX)}: ${opt.x.toFixed(2)}, ${esc(fY)}: ${opt.y.toFixed(2)})` +
-                `${selecModel.isQuad ? '' : ' <span class="text-slate-400">- linear + interaction model</span>'}</p>`;
+                `${selecModel.isQuad ? '' : ' <span class="text-slate-400">- linear + interaction model</span>'}</p>` +
+                `<p class="text-xs text-slate-500">${esc(sliceConditions(selecModel))}</p>`;
             predictedSelectivityDisplay.appendChild(pr);
 
             const pd = document.createElement('div'), cid = `contour-selectivity-${idx}`;
@@ -1091,6 +1093,11 @@ function updateAdvancedVisualizations() {
 
         if (yieldModel || selecModel) contourPlotsContainer.appendChild(plotWrapper);
     });
+
+    if (!hasYieldModels && !hasSelecModels) {
+        contourPlotsPlaceholder.textContent = 'No full model can be fitted yet. More complete, independently varied experiments may be needed.';
+        contourPlotsPlaceholder.style.display = 'block';
+    }
 
     if (hasYieldModels || hasSelecModels) {
         predictedOptimaCard.classList.remove('hidden');
@@ -1156,7 +1163,10 @@ function draw2DContourPlot(canvasId, model, factorXName, factorYName, responseNa
     }
     ctx.putImageData(imageData, padding, padding);
 
-    ctx.fillStyle = '#334155'; ctx.font = '12px Inter, sans-serif';
+    ctx.fillStyle = '#334155';
+    ctx.font = '10px Inter, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    ctx.fillText(sliceConditions(model), width / 2, 8, width - 10);
+    ctx.font = '12px Inter, sans-serif';
     ctx.textAlign = 'center'; ctx.textBaseline = 'top';
     ctx.fillText(xMin.toFixed(1), padding, height - padding + 8);
     ctx.fillText(xMax.toFixed(1), width - padding, height - padding + 8);
