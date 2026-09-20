@@ -199,7 +199,7 @@
     </div>
    
 <footer class="fixed bottom-0 w-full bg-white border-t border-slate-200 py-2 text-center z-40 no-print">
-    <p class="text-[10px] text-slate-400 font-mono uppercase tracking-widest">MultiPass v15.0 - 01 SEPT 2026 - NitaD & MCS Univ Paris-Saclay</p>
+    <p class="text-[10px] text-slate-400 font-mono uppercase tracking-widest">MultiPass v16.0 - 20 SEPT 2026 - NitaD & MCS Univ Paris-Saclay</p>
 </footer>
 
     <script defer>
@@ -483,7 +483,10 @@ document.addEventListener('DOMContentLoaded', () => {
                             const codedLevel = codedRow[varyingFactorIndex];
                             const center = (factorDef.min + factorDef.max) / 2;
                             const halfRange = (factorDef.max - factorDef.min) / 2;
-                            point[factorDef.name] = center + codedLevel * halfRange;
+                            // Inscribed CCD: entered min/max are the axial limits.
+                            // Scale every coded level equally to preserve the CCD geometry;
+                            // alpha=1 leaves CentralCompositeSimple unchanged.
+                            point[factorDef.name] = center + (codedLevel / alpha) * halfRange;
                             varyingFactorIndex++;
                         }
                     }
