@@ -4,205 +4,366 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Microreactor Experiment Planner | Scherrmann Lab</title>
-    
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        sci: { 500: '#0ea5e9', 600: '#0284c7', 900: '#0c4a6e' }
-                    }
-                }
-            }
+    <!-- Chart.js 4.5.1 (UMD build), loaded locally: no internet needed.
+         Save https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js
+         as script/chart.umd.min.js next to this HTML file.
+         If the file is missing, only the concentration preview is disabled. -->
+    <script src="script/chart.umd.min.js"></script>
+
+    <style>
+        /* ---------- Tokens ---------- */
+        :root {
+            --bg: #f8fafc;
+            --surface: #ffffff;
+            --text: #1e293b;
+            --text-strong: #0f172a;
+            --text-body: #334155;
+            --text-soft: #475569;
+            --muted: #64748b;
+            --muted-2: #94a3b8;
+            --border: #e2e8f0;
+            --border-soft: #f1f5f9;
+            --input-border: #cbd5e1;
+            --sci-50: #f0f9ff;
+            --sci-100: #e0f2fe;
+            --sci-200: #bae6fd;
+            --sci-500: #0ea5e9;
+            --sci-600: #0284c7;
+            --sci-900: #0c4a6e;
+            --amber-600: #d97706;
+            --amber-700: #b45309;
+            --header-bg: #0f172a;
+            --critical-error-text: #991b1b;
+            --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, "Liberation Mono", Menlo, monospace;
+            --shadow-sm: 0 1px 2px 0 rgba(15, 23, 42, 0.05);
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
         }
-    </script>
 
- <style>
-        .alert { padding: 1rem; border-radius: 0.5rem; margin: 1.5rem 0; font-size: 0.875rem; line-height: 1.5; border: 1px solid transparent; }
+        /* ---------- Base ---------- */
+        *, *::before, *::after { box-sizing: border-box; }
+        [hidden] { display: none !important; }
+        html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+        body {
+            margin: 0;
+            padding-bottom: 3rem; /* room for the fixed footer */
+            font-family: var(--font-sans);
+            font-size: 1rem;
+            line-height: 1.5;
+            color: var(--text);
+            background-color: var(--bg);
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        h1, h2, h3, h4, p, pre { margin: 0; }
+        button, input, select { font: inherit; color: inherit; margin: 0; }
+        button { cursor: pointer; }
+
+        .icon {
+            display: inline-block; width: 1em; height: 1em; flex: none; vertical-align: -0.125em;
+            fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+        }
+        .spin { animation: spin 0.9s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ---------- Header / footer ---------- */
+        .app-header { background-color: var(--header-bg); color: #fff; border-bottom: 1px solid var(--sci-900); box-shadow: var(--shadow-md); }
+        .header-inner { display: flex; align-items: center; gap: 1rem; padding-top: 1.5rem; padding-bottom: 1.5rem; }
+        .app-logo { font-size: 1.875rem; color: var(--sci-500); }
+        .app-title { font-size: 1.5rem; line-height: 2rem; font-weight: 600; letter-spacing: -0.025em; }
+        .app-title span { color: var(--sci-500); font-weight: 700; }
+        .app-subtitle { margin-top: 0.25rem; font-size: 0.875rem; line-height: 1.25rem; color: var(--muted-2); }
+        .app-footer { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; padding: 0.5rem 0; text-align: center; background-color: var(--surface); border-top: 1px solid var(--border); }
+        .app-footer p { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted-2); }
+
+        /* ---------- Layout ---------- */
+        .container { max-width: 1536px; margin-left: auto; margin-right: auto; padding-left: 1rem; padding-right: 1rem; }
+        .layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2rem; margin-top: 2rem; }
+        .stack { display: flex; flex-direction: column; gap: 1.5rem; min-width: 0; }
+        .span-all { grid-column: 1 / -1; }
+        @media (min-width: 640px) { .container { padding-left: 1.5rem; padding-right: 1.5rem; } }
+        @media (min-width: 1024px) {
+            .container { padding-left: 2rem; padding-right: 2rem; }
+            .layout { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
+
+        /* ---------- Cards and headings ---------- */
+        .card { background-color: var(--surface); border: 1px solid var(--border); border-radius: 0.75rem; box-shadow: var(--shadow-sm); padding: 1.5rem; }
+        .card-title { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1.25rem; font-size: 1.125rem; line-height: 1.75rem; font-weight: 600; color: var(--text); }
+        .card-title .icon { color: var(--sci-500); }
+        .subhead { margin-bottom: 1rem; font-size: 0.875rem; line-height: 1.25rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+        .results-title { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem; font-size: 0.875rem; line-height: 1.25rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.025em; color: var(--muted); }
+        .hint { font-size: 0.75rem; line-height: 1rem; color: var(--muted-2); }
+        .mt-sm { margin-top: 0.75rem; }
+
+        /* ---------- Form controls ---------- */
+        .input-row { display: flex; flex-direction: column; gap: 0.25rem; padding-bottom: 0.75rem; margin-bottom: 0.75rem; border-bottom: 1px solid var(--border-soft); }
+        .input-row.is-last { border-bottom: 0; margin-bottom: 0; padding-bottom: 0; }
+        .form-label { font-size: 0.875rem; font-weight: 500; color: var(--text-soft); line-height: 1.2; margin: 0; }
+        .form-control { width: 100%; border: 1px solid var(--input-border); border-radius: 0.375rem; padding: 0.375rem 0.75rem; font-family: var(--font-mono); font-size: 0.875rem; color: var(--text-strong); background-color: var(--bg); transition: border-color 0.2s, box-shadow 0.2s, background-color 0.2s; }
+        .form-control:focus { outline: none; border-color: var(--sci-500); box-shadow: 0 0 0 2px var(--sci-200); background-color: #fff; }
+        .form-control.is-flagged { border-color: #f59e0b; box-shadow: 0 0 0 2px #fde68a; }
+        @media (min-width: 640px) {
+            .input-row { display: grid; grid-template-columns: 2fr 1fr; align-items: center; gap: 1rem; }
+        }
+
+        .field-label { display: block; margin-bottom: 0.25rem; font-size: 0.75rem; line-height: 1rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.025em; color: var(--muted); }
+        .pump-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+        @media (min-width: 768px) { .pump-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
+        .setup-block { display: flex; flex-direction: column; gap: 1rem; margin-bottom: 2rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--border-soft); }
+        .setup-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 1rem; align-items: center; }
+        .factor-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem 1rem; margin-bottom: 1rem; }
+        .factor-head { grid-column: 1 / -1; font-size: 0.75rem; line-height: 1rem; font-weight: 600; text-transform: uppercase; color: var(--muted); }
+        .factor-head:not(:first-child) { margin-top: 0.5rem; }
+
+        /* ---------- Notes ---------- */
+        .note { padding: 0.625rem 0.75rem; border: 1px solid var(--sci-100); border-radius: 0.5rem; background-color: var(--sci-50); color: var(--sci-900); font-size: 0.8125rem; line-height: 1.45; }
+        .note.warn { border-color: #fde68a; background-color: #fffbeb; color: #92400e; }
+        .note:empty { display: none; }
+
+        /* ---------- Concentration preview ---------- */
+        .chart-section { margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--border-soft); }
+        .chart-section .hint { margin-bottom: 0.5rem; }
+        .chart-box { position: relative; height: 250px; }
+        .chart-caption { margin-top: 0.5rem; font-size: 0.75rem; line-height: 1.1rem; color: var(--muted); }
+        .chart-caption.is-low { color: var(--amber-700); font-weight: 600; }
+
+        /* ---------- Buttons ---------- */
+        .actions { margin-top: 2rem; }
+        .btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; border-radius: 0.5rem; font-weight: 600; line-height: 1.5rem; text-decoration: none; transition: background-color 0.15s, border-color 0.15s, color 0.15s; }
+        .btn:focus-visible { outline: 2px solid var(--sci-500); outline-offset: 2px; }
+        .btn-primary { width: 100%; padding: 0.75rem 1rem; border: 0; background-color: var(--sci-600); color: #fff; box-shadow: var(--shadow-sm); }
+        .btn-primary:hover:not(:disabled) { background-color: var(--sci-500); }
+        .btn-primary:disabled { opacity: 0.75; cursor: progress; }
+        .btn-secondary { padding: 0.5rem 1.5rem; border: 1px solid var(--input-border); background-color: var(--surface); color: var(--text-body); font-weight: 500; box-shadow: var(--shadow-sm); }
+        .btn-secondary:hover { background-color: var(--bg); }
+        .btn-warn { padding: 0.5rem 1.25rem; border: 1px solid var(--amber-600); background-color: var(--amber-600); color: #fff; }
+        .btn-warn:hover { background-color: var(--amber-700); border-color: var(--amber-700); }
+        #downloadLink { align-self: flex-start; cursor: pointer; }
+
+        /* ---------- Status messages ---------- */
+        .alert { padding: 1rem; border-radius: 0.5rem; font-size: 0.875rem; line-height: 1.5; border: 1px solid transparent; }
         .alert.success { background-color: #f0fdf4; color: #166534; border-color: #bbf7d0; }
         .alert.warning { background-color: #fefce8; color: #854d0e; border-color: #fef08a; }
         .alert.critical-error { background-color: #fef2f2; color: #991b1b; border-color: #fecaca; }
-        :root { --critical-error-text: #991b1b; }
-        
-        #refillSummaryDisplay { background-color: #f8fafc; border: 1px solid #e2e8f0; padding: 1.5rem; border-radius: 0.5rem; margin-top: 1.5rem; }
-        #refillSummaryDisplay h3 { color: #0f172a; font-weight: 600; font-size: 1.125rem; margin-bottom: 1rem; }
-        #refillSummaryDisplay h4 { color: #334155; font-weight: 600; font-size: 0.875rem; margin-top: 1.5rem; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.05em; }
-        #refillSummaryDisplay ul { padding-left: 0; margin-bottom: 1rem; list-style: none; font-size: 0.875rem; color: #475569; }
+
+        /* ---------- Sequence summary ---------- */
+        #refillSummaryDisplay { background-color: var(--bg); border: 1px solid var(--border); padding: 1.5rem; border-radius: 0.5rem; }
+        #refillSummaryDisplay h3 { display: flex; align-items: center; gap: 0.5rem; color: var(--text-strong); font-weight: 600; font-size: 1.125rem; margin-bottom: 1rem; }
+        #refillSummaryDisplay h4 { color: var(--text-body); font-weight: 600; font-size: 0.875rem; margin-top: 1.5rem; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.05em; }
+        #refillSummaryDisplay ul { padding-left: 0; margin: 0 0 1rem; list-style: none; font-size: 0.875rem; color: var(--text-soft); }
         #refillSummaryDisplay ul li { position: relative; padding-left: 1.5rem; margin-bottom: 0.5rem; }
-        #refillSummaryDisplay ul li::before { content: "\f101"; font-family: "Font Awesome 6 Free"; font-weight: 900; position: absolute; left: 0; color: #0ea5e9; }
+        #refillSummaryDisplay ul li::before { content: "\00BB"; position: absolute; left: 0.25rem; top: -0.05em; font-weight: 700; color: var(--sci-500); }
         #refillSummaryDisplay ul ul { margin-top: 0.5rem; margin-bottom: 0; }
-        
-        .input-row { display: flex; flex-direction: column; gap: 0.25rem; padding-bottom: 0.75rem; margin-bottom: 0.75rem; border-bottom: 1px solid #f1f5f9; }
-        .form-label { font-size: 0.875rem; font-weight: 500; color: #475569; line-height: 1.2; margin: 0; }
-        .form-control { width: 100%; border: 1px solid #cbd5e1; border-radius: 0.375rem; padding: 0.375rem 0.75rem; font-family: 'JetBrains Mono', monospace; font-size: 0.875rem; color: #0f172a; background-color: #f8fafc; transition: all 0.2s; }
-        .form-control:focus { outline: none; border-color: #0ea5e9; box-shadow: 0 0 0 2px #bae6fd; background-color: #fff; }
-        
-        @media (min-width: 640px) {
-            .input-row { display: grid; grid-template-columns: 2fr 1fr; align-items: center; gap: 1rem; }
-            .input-row .form-control { width: 100% !important; }
+
+        /* ---------- Output preview ---------- */
+        #results pre { margin: 0; background: var(--text-strong); color: var(--sci-200); padding: 1.25rem; border-radius: 0.5rem; overflow-x: auto; font-family: var(--font-mono); font-size: 0.875rem; line-height: 1.5; max-height: 500px; }
+        #results pre.pre-placeholder { background: var(--bg); color: var(--muted); font-style: italic; border: 1px solid var(--border-soft); }
+
+        /* ---------- Acknowledgement dialog ---------- */
+        .modal-backdrop { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 100; display: flex; align-items: center; justify-content: center; padding: 1rem; background-color: rgba(15, 23, 42, 0.55); }
+        .modal { width: 100%; max-width: 36rem; max-height: calc(100vh - 2rem); overflow-y: auto; padding: 1.5rem; background-color: var(--surface); border-top: 4px solid var(--amber-600); border-radius: 0.75rem; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.15); }
+        .modal h3 { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; font-size: 1.125rem; font-weight: 600; color: var(--text-strong); }
+        .modal h3 .icon { color: var(--amber-600); }
+        .modal-intro { margin-bottom: 0.75rem; font-size: 0.875rem; color: var(--text-soft); }
+        .modal-list { margin: 0 0 1.25rem; padding-left: 1.25rem; font-size: 0.875rem; line-height: 1.5; color: var(--text-body); }
+        .modal-list li + li { margin-top: 0.5rem; }
+        .modal-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.75rem; }
+
+        @media (prefers-reduced-motion: reduce) {
+            .spin { animation-duration: 3s; }
+            .form-control, .btn { transition: none; }
         }
-        
-        #results pre { background: #0f172a; color: #bae6fd; padding: 1.25rem; border-radius: 0.5rem; overflow-x: auto; font-family: 'JetBrains Mono', monospace; font-size: 0.875rem; line-height: 1.5; max-height: 500px; }
+        @media print {
+            .no-print { display: none !important; }
+            body { padding-bottom: 0; }
+        }
     </style>
-
 </head>
-<body class="font-sans text-slate-800 bg-slate-50 antialiased pb-8">
+<body>
 
-    <header class="bg-slate-900 text-white shadow-md border-b border-sci-900">
-        <div class="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex items-center gap-4">
-            <i class="fas fa-flask-vial text-sci-500 text-3xl"></i>
+    <!-- Inline icon set (replaces Font Awesome; no external files) -->
+    <svg width="0" height="0" style="position:absolute; overflow:hidden" aria-hidden="true" focusable="false">
+        <symbol id="i-flask" viewBox="0 0 24 24"><path d="M8.5 3h7"/><path d="M10 3v6l-5.4 9.2A1.7 1.7 0 0 0 6.1 21h11.8a1.7 1.7 0 0 0 1.5-2.8L14 9V3"/><path d="M7 15h10"/></symbol>
+        <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></symbol>
+        <symbol id="i-droplet" viewBox="0 0 24 24"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></symbol>
+        <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></symbol>
+        <symbol id="i-calc" viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M8 6h8M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01M16 18h.01"/></symbol>
+        <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></symbol>
+        <symbol id="i-code" viewBox="0 0 24 24"><path d="M16 18l6-6-6-6"/><path d="M8 6l-6 6 6 6"/></symbol>
+        <symbol id="i-clipboard" viewBox="0 0 24 24"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></symbol>
+        <symbol id="i-check" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4L12 14.01l-3-3"/></symbol>
+        <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></symbol>
+        <symbol id="i-loader" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.22-8.56"/></symbol>
+    </svg>
+
+    <header class="app-header">
+        <div class="container header-inner">
+            <svg class="icon app-logo" aria-hidden="true"><use href="#i-flask"/></svg>
             <div>
-                <h1 class="text-2xl font-semibold tracking-tight">Microreactor Experiment <span class="text-sci-500 font-bold">Planner</span></h1>
-                <p class="text-sm text-slate-400 mt-1">Scherrmann Lab</p>
+                <h1 class="app-title">Microreactor Experiment <span>Planner</span></h1>
+                <p class="app-subtitle">Scherrmann Lab</p>
             </div>
         </div>
     </header>
 
-    <div class="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 space-y-6">
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <div class="space-y-6">
-                
-                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                    <h2 class="text-lg font-semibold text-slate-800 mb-5 flex items-center gap-2">
-                        <i class="fas fa-cog text-sci-500"></i> Apparatus Parameters
-                    </h2>
-                    
-                    <div class="input-row"><label class="form-label" for="reactorVolume">Reactor Volume VR (µL):</label><input class="form-control sm:w-32" type="number" id="reactorVolume" value="442" min="1"></div>
-                    <div class="input-row"><label class="form-label" for="concA">Concentration of Sample A (mM):</label><input class="form-control sm:w-32" type="number" id="concA" value="100" min="0"></div>
-                    <div class="input-row"><label class="form-label" for="concB">Concentration of Sample B (mM):</label><input class="form-control sm:w-32" type="number" id="concB" value="100" min="0"></div>
-                    <div class="input-row"><label class="form-label" for="deadVolume1" title="Volume of tubing/mixer before the reactor.">Dead Volume Mixer to Reactor (µL):</label><input class="form-control sm:w-32" type="number" id="deadVolume1" value="62" min="0"></div>
-                    <div class="input-row"><label class="form-label" for="deadVolume2">Dead Volume Reactor to Collection (µL):</label><input class="form-control sm:w-32" type="number" id="deadVolume2" value="495" min="0"></div>
-                    <div class="input-row"><label class="form-label" for="collectVolumePerFraction">Collect Volume per Fraction (µL):</label><input class="form-control sm:w-32" type="number" id="collectVolumePerFraction" value="100" min="1"></div>
-                    <div class="input-row"><label class="form-label" for="volumeReactantsSlugInput" title="Total volume intended to pass through the reactor.">Total Reactant Mixture Pumped (Slug Vol) (µL):</label><input class="form-control sm:w-32" type="number" id="volumeReactantsSlugInput" value="442" min="1"></div>
-                    <div class="input-row"><label class="form-label" for="dmCoeff" title="Molecular Diffusion Coefficient (m²/s)">Molecular Diffusion Coeff (m²/s):</label><input class="form-control sm:w-32" type="text" id="dmCoeff" value="1e-9" placeholder="e.g. 1e-9"></div>
-                    <div class="input-row"><label class="form-label" for="tubeRadius" title="Inner radius of the tubing (mm)">Tube Inner Radius (mm):</label><input class="form-control sm:w-32" type="number" id="tubeRadius" value="0.25" min="0.01" step="any"></div>
-                    <div class="input-row"><label class="form-label" for="postCollectionFlushTime">Post-Collection Flush Time (min):</label><input class="form-control sm:w-32" type="number" id="postCollectionFlushTime" value="5" min="0" step="any"></div>
-                    <div class="input-row"><label class="form-label" for="maxVolumeA">Max Syringe Volume Pump A (µL):</label><input class="form-control sm:w-32" type="number" id="maxVolumeA" value="10000" min="1"></div>
-                    <div class="input-row"><label class="form-label" for="maxVolumeB">Max Syringe Volume Pump B (µL):</label><input class="form-control sm:w-32" type="number" id="maxVolumeB" value="10000" min="1"></div>
-                    <div class="input-row border-b-0 mb-0 pb-0"><label class="form-label" for="refillPauseDuration">Refill Pause Duration (min):</label><input class="form-control sm:w-32" type="number" id="refillPauseDuration" value="1440" min="0"></div>
-                </div>
+    <main class="container">
+        <div class="layout">
+            <div class="stack">
 
-                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                    <h2 class="text-lg font-semibold text-slate-800 mb-5 flex items-center gap-2">
-                        <i class="fas fa-tint text-sci-500"></i> Pump Routing
-                    </h2>
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <section class="card">
+                    <h2 class="card-title"><svg class="icon" aria-hidden="true"><use href="#i-sliders"/></svg> Apparatus Parameters</h2>
+
+                    <div class="input-row"><label class="form-label" for="reactorVolume">Reactor Volume VR (µL):</label><input class="form-control" type="number" id="reactorVolume" value="442" min="1"></div>
+                    <div class="input-row"><label class="form-label" for="concA">Concentration of Sample A (mM):</label><input class="form-control" type="number" id="concA" value="100" min="0"></div>
+                    <div class="input-row"><label class="form-label" for="concB">Concentration of Sample B (mM):</label><input class="form-control" type="number" id="concB" value="100" min="0"></div>
+                    <div class="input-row"><label class="form-label" for="deadVolume1" title="Volume of tubing/mixer before the reactor.">Dead Volume Mixer to Reactor (µL):</label><input class="form-control" type="number" id="deadVolume1" value="62" min="0"></div>
+                    <div class="input-row"><label class="form-label" for="deadVolume2">Dead Volume Reactor to Collection (µL):</label><input class="form-control" type="number" id="deadVolume2" value="495" min="0"></div>
+                    <div class="input-row"><label class="form-label" for="collectVolumePerFraction">Collect Volume per Fraction (µL):</label><input class="form-control" type="number" id="collectVolumePerFraction" value="100" min="1"></div>
+                    <div class="input-row"><label class="form-label" for="volumeReactantsSlugInput" title="Total volume intended to pass through the reactor.">Total Reactant Mixture Pumped (Slug Vol) (µL):</label><input class="form-control" type="number" id="volumeReactantsSlugInput" value="442" min="1"></div>
+                    <div class="input-row"><label class="form-label" for="dmCoeff" title="Molecular Diffusion Coefficient (m²/s)">Molecular Diffusion Coeff (m²/s):</label><input class="form-control" type="text" id="dmCoeff" value="1e-9" placeholder="e.g. 1e-9"></div>
+                    <div class="input-row"><label class="form-label" for="tubeRadius" title="Inner radius of the tubing (mm)">Tube Inner Radius (mm):</label><input class="form-control" type="number" id="tubeRadius" value="0.25" min="0.01" step="any"></div>
+                    <div class="input-row"><label class="form-label" for="postCollectionFlushTime">Post-Collection Flush Time (min):</label><input class="form-control" type="number" id="postCollectionFlushTime" value="5" min="0" step="any"></div>
+                    <div class="input-row"><label class="form-label" for="maxVolumeA">Max Syringe Volume Pump A (µL):</label><input class="form-control" type="number" id="maxVolumeA" value="10000" min="1"></div>
+                    <div class="input-row"><label class="form-label" for="maxVolumeB">Max Syringe Volume Pump B (µL):</label><input class="form-control" type="number" id="maxVolumeB" value="10000" min="1"></div>
+                    <div class="input-row is-last"><label class="form-label" for="refillPauseDuration" title="Minimum 10 min.">Refill Pause Duration (min, ≥ 10):</label><input class="form-control" type="number" id="refillPauseDuration" value="1440" min="10"></div>
+                </section>
+
+                <section class="card">
+                    <h2 class="card-title"><svg class="icon" aria-hidden="true"><use href="#i-droplet"/></svg> Pump Routing</h2>
+                    <div class="pump-grid">
                         <div>
-                            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1" for="pumpA">Sample A</label>
-                            <select class="form-control w-full" id="pumpA">
+                            <label class="field-label" for="pumpA">Sample A</label>
+                            <select class="form-control" id="pumpA">
                                 <option value="PS1">PS1</option><option value="PS2">PS2</option><option value="PS3" selected>PS3</option><option value="PS4">PS4</option><option value="Kn1">Kn1</option><option value="Kn2">Kn2</option><option value="Kn3">Kn3</option>
                             </select>
                         </div>
                         <div>
-                            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1" for="pumpB">Sample B</label>
-                            <select class="form-control w-full" id="pumpB">
+                            <label class="field-label" for="pumpB">Sample B</label>
+                            <select class="form-control" id="pumpB">
                                 <option value="PS1">PS1</option><option value="PS2">PS2</option><option value="PS3">PS3</option><option value="PS4" selected>PS4</option><option value="Kn1">Kn1</option><option value="Kn2">Kn2</option><option value="Kn3">Kn3</option>
                             </select>
                         </div>
                         <div>
-                            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1" for="pumpC">Solvent C (Push)</label>
-                            <select class="form-control w-full" id="pumpC">
+                            <label class="field-label" for="pumpC">Solvent C (Push)</label>
+                            <select class="form-control" id="pumpC">
                                 <option value="PS1">PS1</option><option value="PS2">PS2</option><option value="PS3">PS3</option><option value="PS4">PS4</option><option value="Kn1" selected>Kn1</option><option value="Kn2">Kn2</option><option value="Kn3">Kn3</option>
                             </select>
                         </div>
                     </div>
-                </div>
+                    <p class="hint mt-sm">Kn1–Kn3 are HPLC pumps; PS1–PS4 are syringe pumps.</p>
+                    <div id="pumpRoutingNote" class="note warn mt-sm" role="status" aria-live="polite"></div>
+                </section>
 
             </div>
 
-            <div class="space-y-6">
-                
-                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                    <h2 class="text-lg font-semibold text-slate-800 mb-5 flex items-center gap-2">
-                        <i class="fas fa-sitemap text-sci-500"></i> Design Setup
-                    </h2>
-                    
-                    <div class="space-y-4 mb-8 border-b border-slate-100 pb-6">
-                        <div class="grid grid-cols-2 gap-x-4 items-center">
+            <div class="stack">
+
+                <section class="card">
+                    <h2 class="card-title"><svg class="icon" aria-hidden="true"><use href="#i-grid"/></svg> Design Setup</h2>
+
+                    <div class="setup-block">
+                        <div class="setup-row">
                             <label class="form-label" for="designType">Experimental Design Type:</label>
-                            <select class="form-control w-full" id="designType">
+                            <select class="form-control" id="designType">
                                 <option value="FullFactorial" selected>Full Factorial (2-level)</option>
                                 <option value="BoxBehnken">Box-Behnken (3-level, 3 factors)</option>
                                 <option value="CentralComposite">Central Composite Design</option>
                                 <option value="CentralCompositeSimple">Central Composite (simple, alpha=1)</option>
                             </select>
                         </div>
-                        <div class="grid grid-cols-2 gap-x-4 items-center">
+                        <div class="setup-row">
                             <label class="form-label" for="sortOrder">Sort Strategy:</label>
-                            <select class="form-control w-full" id="sortOrder">
+                            <select class="form-control" id="sortOrder">
                                 <option value="none">None (Default DOE Order)</option>
                                 <option value="increasing">Increasing Temperature</option>
                                 <option value="decreasing" selected>Decreasing Temperature</option>
                             </select>
                         </div>
+                        <div id="designNote" class="note" role="status" aria-live="polite"></div>
                     </div>
 
-                    <h3 class="text-sm font-bold uppercase tracking-wider text-slate-500 mb-4">Factor Levels (Min / Max)</h3>
-                    
-                    <div class="grid grid-cols-2 gap-x-4 gap-y-2 mb-4">
-                        <div class="col-span-2 text-xs font-semibold text-slate-500 uppercase">Residence Time (min)</div>
-                        <input class="form-control" type="number" id="minResidenceTime" value="5" min="0.01" step="any" placeholder="Min">
-                        <input class="form-control" type="number" id="maxResidenceTime" value="15" min="0.01" step="any" placeholder="Max">
-                        
-                        <div class="col-span-2 text-xs font-semibold text-slate-500 uppercase mt-2">Molar Ratio B/A</div>
-                        <input class="form-control" type="number" id="minMolarRatioBA" value="0.5" min="0" step="any" placeholder="Min">
-                        <input class="form-control" type="number" id="maxMolarRatioBA" value="2" min="0" step="any" placeholder="Max">
-                        
-                        <div class="col-span-2 text-xs font-semibold text-slate-500 uppercase mt-2" title="Portion of total flow for A+B.">Active Flow Fraction (A+B)</div>
-                        <input class="form-control" type="number" id="minActiveFlowFraction" value="0.75" min="0" max="1" step="0.01" placeholder="Min">
-                        <input class="form-control" type="number" id="maxActiveFlowFraction" value="1" min="0" max="1" step="0.01" placeholder="Max">
-                        
-                        <div class="col-span-2 text-xs font-semibold text-slate-500 uppercase mt-2">Temperature (°C)</div>
-                        <input class="form-control" type="number" id="minTemperature" value="25" min="-200" max="400" step="any" placeholder="Min">
-                        <input class="form-control" type="number" id="maxTemperature" value="80" min="-200" max="400" step="any" placeholder="Max">
+                    <h3 class="subhead">Factor Levels (Min / Max)</h3>
+
+                    <div class="factor-grid">
+                        <div class="factor-head">Residence Time (min)</div>
+                        <input class="form-control" type="number" id="minResidenceTime" value="5" min="0.01" step="any" placeholder="Min" aria-label="Residence time min">
+                        <input class="form-control" type="number" id="maxResidenceTime" value="15" min="0.01" step="any" placeholder="Max" aria-label="Residence time max">
+
+                        <div class="factor-head">Molar Ratio B/A</div>
+                        <input class="form-control" type="number" id="minMolarRatioBA" value="0.5" min="0" step="any" placeholder="Min" aria-label="Molar ratio B/A min">
+                        <input class="form-control" type="number" id="maxMolarRatioBA" value="2" min="0" step="any" placeholder="Max" aria-label="Molar ratio B/A max">
+
+                        <div class="factor-head" title="Portion of total flow for A+B.">Active Flow Fraction (A+B)</div>
+                        <input class="form-control" type="number" id="minActiveFlowFraction" value="0.75" min="0" max="1" step="0.01" placeholder="Min" aria-label="Active flow fraction min">
+                        <input class="form-control" type="number" id="maxActiveFlowFraction" value="1" min="0" max="1" step="0.01" placeholder="Max" aria-label="Active flow fraction max">
+
+                        <div class="factor-head">Temperature (°C)</div>
+                        <input class="form-control" type="number" id="minTemperature" value="25" min="-200" max="400" step="any" placeholder="Min" aria-label="Temperature min">
+                        <input class="form-control" type="number" id="maxTemperature" value="80" min="-200" max="400" step="any" placeholder="Max" aria-label="Temperature max">
                     </div>
 
-
-                    <div class="mt-6 border-t border-slate-100 pt-6">
-                        <h3 class="text-sm font-bold uppercase tracking-wider text-slate-500 mb-4">Estimated Concentration Profile</h3>
-                        <p class="text-xs text-slate-400 mb-2">Preview based on average residence time.</p>
-                        <canvas id="dispersionPlot" style="width:100%; max-height: 250px;"></canvas>
+                    <div class="chart-section">
+                        <h3 class="subhead">Estimated Concentration Profile</h3>
+                        <p class="hint">Preview based on average residence time.</p>
+                        <div class="chart-box"><canvas id="dispersionPlot" role="img" aria-label="Estimated concentration profile at the collector"></canvas></div>
+                        <p id="dispersionCaption" class="chart-caption"></p>
+                        <p id="chartMissing" class="note warn mt-sm" hidden>Chart library not found at script/chart.umd.min.js, so the preview is off. Plan generation still works.</p>
                     </div>
 
-                    <div class="mt-8">
-                        <button id="generateButton" onclick="calculateAndSave()" class="w-full bg-sci-600 hover:bg-sci-500 text-white font-semibold py-3 px-4 rounded-lg shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-sci-500 focus:ring-offset-2 flex items-center justify-center gap-2">
-                            <i class="fas fa-calculator"></i> Generate Execution Plan
+                    <div class="actions">
+                        <button id="generateButton" type="button" onclick="calculateAndSave()" class="btn btn-primary">
+                            <svg class="icon" aria-hidden="true"><use href="#i-calc"/></svg> Generate Execution Plan
                         </button>
                     </div>
+                </section>
 
-                </div>
             </div>
 
-            <div class="lg:col-span-2 space-y-6">
+            <div class="stack span-all">
                 <div id="warningMessage" style="display: none;"></div>
-                
-                <a id="downloadLink" class="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium py-2 px-6 rounded-lg transition-colors shadow-sm" style="display: none;">
-                    <i class="fas fa-download"></i> Download JSON
+
+                <a id="downloadLink" class="btn btn-secondary" style="display: none;">
+                    <svg class="icon" aria-hidden="true"><use href="#i-download"/></svg> Download JSON
                 </a>
-                
+
                 <div id="refillSummaryDisplay" style="display: none;"></div>
 
-                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 results-section">
-                    <h2 class="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-4 flex items-center gap-2">
-                        <i class="fas fa-file-code"></i> Data Output Preview
-                    </h2>
-                    <div id="results"><pre class="text-slate-500 italic bg-slate-50 border border-slate-100">Configure parameters above and click "Generate Execution Plan".</pre></div>
-                </div>
+                <section class="card results-section">
+                    <h2 class="results-title"><svg class="icon" aria-hidden="true"><use href="#i-code"/></svg> Data Output Preview</h2>
+                    <div id="results"><pre class="pre-placeholder">Configure parameters above and click "Generate Execution Plan".</pre></div>
+                </section>
+            </div>
+        </div>
+    </main>
+
+    <footer class="app-footer no-print">
+        <p>MultiPass v15.0 - 01 SEPT 2026 - NitaD &amp; MCS Univ Paris-Saclay</p>
+    </footer>
+
+    <!-- Acknowledgement dialog: pump-routing issues must be accepted before the plan is shown -->
+    <div id="ackModal" class="modal-backdrop" hidden>
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="ackTitle" aria-describedby="ackIntro">
+            <h3 id="ackTitle"><svg class="icon" aria-hidden="true"><use href="#i-alert"/></svg> Accept pump routing issues</h3>
+            <p id="ackIntro" class="modal-intro">The plan was calculated, but the pump routing has issues the pump program will not catch. Accept them to show the plan and enable the download.</p>
+            <ul id="ackList" class="modal-list"></ul>
+            <div class="modal-actions">
+                <button type="button" id="ackCancel" class="btn btn-secondary">Cancel</button>
+                <button type="button" id="ackAccept" class="btn btn-warn">Accept and show plan</button>
             </div>
         </div>
     </div>
-   
-<footer class="fixed bottom-0 w-full bg-white border-t border-slate-200 py-2 text-center z-40 no-print">
-    <p class="text-[10px] text-slate-400 font-mono uppercase tracking-widest">MultiPass v15.0 - 01 SEPT 2026 - NitaD & MCS Univ Paris-Saclay</p>
-</footer>
 
-    <script defer>
+    <script>
+        // ---- Planner constants (v15 review fixes) ----
+        const MIN_REFILL_PAUSE_MIN = 10;             // minimum refill pause (min)
+        const HPLC_PUMPS = ['Kn1', 'Kn2', 'Kn3'];    // reservoir-fed HPLC pumps; PS1-PS4 are syringe pumps
+        const OUTSIDE_REACTOR_WARN_FRACTION = 0.10;  // warn when V1 + V2 > 10 % of VR
+        const SLUG_PEAK_MIN_FRACTION = 0.95;         // warn when the slug center peaks below 95 % of nominal
+        const SLUG_FOR_95_PEAK_FACTOR = 1.96;        // V_slug >= 1.96 x V_disp gives a 95 % peak (V_disp = 2 sigma)
+
         // Robust number parser: handles "1e-4", "0.0001", "1E-6", spaces, comma decimal sep, etc.
         function parseRobust(str) {
             if (typeof str === 'number') return str;
@@ -296,6 +457,7 @@ function updateDispersionPlot() {
     const plotCanvas = document.getElementById('dispersionPlot');
     const plotIsInvalid = !(Dm > 0) || !(radius > 0) || !(RT > 0) || !(VR > 0) || !(V_slug > 0);
     if (plotIsInvalid) {
+        setDispersionCaption('', false);
         if (dispersionChart) { dispersionChart.destroy(); dispersionChart = null; }
         if (plotCanvas) {
             const c = plotCanvas.getContext('2d');
@@ -332,6 +494,22 @@ function updateDispersionPlot() {
         labels.push(t.toFixed(2));
         dataPoints.push(Math.max(0, c_frac * 100)); // Store as percentage
     }
+
+    // Slug-center peak (fraction of nominal concentration) for the caption
+    const peakFraction = erf(V_slug / (Math.SQRT2 * V_disp));
+    const lowPeak = peakFraction < SLUG_PEAK_MIN_FRACTION;
+    setDispersionCaption(
+        `Dispersion band (2σ): ${V_disp.toFixed(1)} µL. The slug center peaks at ${(peakFraction * 100).toFixed(1)}% of nominal concentration.` +
+        (lowPeak ? ` The slug is too short for this dispersion: use at least ~${Math.ceil(SLUG_FOR_95_PEAK_FACTOR * V_disp)} µL.` : ''),
+        lowPeak);
+
+    // Chart.js is loaded locally (script/chart.umd.min.js). If it is missing, only the preview is disabled.
+    const chartMissingNote = document.getElementById('chartMissing');
+    if (typeof Chart === 'undefined') {
+        if (chartMissingNote) chartMissingNote.hidden = false;
+        return;
+    }
+    if (chartMissingNote) chartMissingNote.hidden = true;
 
     const ctx = document.getElementById('dispersionPlot');
     if (!ctx) return;
@@ -398,12 +576,164 @@ document.addEventListener('DOMContentLoaded', () => {
         const input = document.getElementById(id);
         if (input) input.addEventListener('input', scheduleRedraw);
     });
+
+    // Live notes: pump routing and design
+    ['pumpA', 'pumpB', 'pumpC'].forEach(id => {
+        const sel = document.getElementById(id);
+        if (sel) sel.addEventListener('change', updatePumpRoutingNote);
+    });
+    updatePumpRoutingNote();
+
+    ['designType', 'sortOrder', 'minResidenceTime', 'maxResidenceTime', 'minMolarRatioBA', 'maxMolarRatioBA',
+     'minActiveFlowFraction', 'maxActiveFlowFraction', 'minTemperature', 'maxTemperature'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) { el.addEventListener('input', updateDesignNote); el.addEventListener('change', updateDesignNote); }
+    });
+    updateDesignNote();
 });
 
 
 
 
 
+
+    // ==========================================
+    // UI HELPERS: notes, caption, acknowledgement
+    // (UI only: nothing here is written to the JSON)
+    // ==========================================
+
+    function setDispersionCaption(text, isLow) {
+        const el = document.getElementById('dispersionCaption');
+        if (!el) return;
+        el.textContent = text;
+        el.classList.toggle('is-low', !!isLow);
+    }
+
+    // Duplicate assignments and solvent C on a syringe pump.
+    function getPumpRoutingIssues(pumpA, pumpB, pumpC) {
+        const channelsByPump = {};
+        [['Sample A', pumpA], ['Sample B', pumpB], ['Solvent C', pumpC]].forEach(([channel, pump]) => {
+            (channelsByPump[pump] = channelsByPump[pump] || []).push(channel);
+        });
+        const duplicatePumps = Object.keys(channelsByPump).filter(p => channelsByPump[p].length > 1);
+        return {
+            duplicatePumps,
+            duplicates: duplicatePumps.map(p => `${p} is assigned to ${channelsByPump[p].join(' and ')}`),
+            solventCOnSyringe: !HPLC_PUMPS.includes(pumpC)
+        };
+    }
+
+    function updatePumpRoutingNote() {
+        const selA = document.getElementById('pumpA');
+        const selB = document.getElementById('pumpB');
+        const selC = document.getElementById('pumpC');
+        const note = document.getElementById('pumpRoutingNote');
+        if (!selA || !selB || !selC || !note) return;
+
+        const issues = getPumpRoutingIssues(selA.value, selB.value, selC.value);
+        const parts = [];
+        if (issues.duplicates.length > 0) {
+            parts.push(`<strong>Duplicate assignment:</strong> ${issues.duplicates.join('; ')}. One pump cannot deliver two liquids.`);
+        }
+        if (issues.solventCOnSyringe) {
+            parts.push(`<strong>Solvent C on a syringe pump (${selC.value}):</strong> C volume is not checked against syringe capacity and no refill is planned for C.`);
+        }
+        if (parts.length > 0) parts.push('You will have to accept this before the plan is shown.');
+        note.innerHTML = parts.join('<br>');
+
+        [selA, selB, selC].forEach(sel => {
+            const flagged = issues.duplicatePumps.includes(sel.value) || (sel === selC && issues.solventCOnSyringe);
+            sel.classList.toggle('is-flagged', flagged);
+        });
+    }
+
+    // Live note describing what the selected design will actually run.
+    function updateDesignNote() {
+        const note = document.getElementById('designNote');
+        const designEl = document.getElementById('designType');
+        const sortEl = document.getElementById('sortOrder');
+        if (!note || !designEl || !sortEl) return;
+
+        const factorPairs = [
+            ['minResidenceTime', 'maxResidenceTime'], ['minMolarRatioBA', 'maxMolarRatioBA'],
+            ['minActiveFlowFraction', 'maxActiveFlowFraction'], ['minTemperature', 'maxTemperature']
+        ];
+        let k = 0;
+        factorPairs.forEach(([idMin, idMax]) => {
+            const lo = parseFloat(document.getElementById(idMin).value);
+            const hi = parseFloat(document.getElementById(idMax).value);
+            if (!isNaN(lo) && !isNaN(hi) && Math.abs(lo - hi) >= 1e-9) k++;
+        });
+        const nFactorial = Math.pow(2, k);
+        const nCCD = nFactorial + 2 * k + 1;
+        const centerNote = 'Only one center point: no pure-error or lack-of-fit estimate (3–6 is usual).';
+        const fallback = (name, need) => `<strong>${name}</strong> needs ${need} varying factors; you have ${k}. The plan will fall back to a 2-level full factorial (${nFactorial} runs).`;
+
+        let html;
+        switch (designEl.value) {
+            case 'BoxBehnken':
+                html = (k === 3)
+                    ? `<strong>Box-Behnken:</strong> 12 edge-midpoint runs + 1 center point = 13 runs at min, mid and max. The three factors are never at their extremes together. ${centerNote}`
+                    : fallback('Box-Behnken', 'exactly 3');
+                break;
+            case 'CentralComposite':
+                if (k < 2) { html = fallback('Central composite', 'at least 2'); break; }
+                {
+                    const alpha = Math.pow(nFactorial, 0.25);
+                    const loPct = 50 - 50 / alpha, hiPct = 50 + 50 / alpha;
+                    html = `<strong>Central composite (rotatable, inscribed), α = ${alpha.toFixed(3)}:</strong> your min/max values are the axial (star) points, each run only once. The ${nFactorial} factorial runs sit at ${loPct.toFixed(1)}% and ${hiPct.toFixed(1)}% of each range, so the corners of your ranges are never run. ${nCCD} runs. ${centerNote}`;
+                }
+                break;
+            case 'CentralCompositeSimple':
+                html = (k < 2)
+                    ? fallback('Central composite', 'at least 2')
+                    : `<strong>Central composite, face-centered (α = 1):</strong> factorial and axial runs at your min/max values, ${nCCD} runs. Not rotatable. ${centerNote}`;
+                break;
+            default:
+                html = `<strong>Full factorial (2-level):</strong> every min/max combination, ${nFactorial} run${nFactorial === 1 ? '' : 's'} for ${k} varying factor${k === 1 ? '' : 's'}. No center point, so curvature cannot be detected.`;
+        }
+        if (sortEl.value !== 'none') {
+            html += '<br>Sorting by temperature replaces random run order, so any drift over the sequence (e.g. reagent ageing) is confounded with temperature.';
+        }
+        note.innerHTML = html;
+    }
+
+    // Blocking dialog. Resolves true (accepted) or false (cancelled / Escape).
+    function confirmAcknowledge(items) {
+        return new Promise(resolve => {
+            const modal = document.getElementById('ackModal');
+            const list = document.getElementById('ackList');
+            const acceptBtn = document.getElementById('ackAccept');
+            const cancelBtn = document.getElementById('ackCancel');
+            const focusables = [cancelBtn, acceptBtn];
+
+            list.innerHTML = items.map(t => `<li>${t}</li>`).join('');
+            modal.hidden = false;
+            cancelBtn.focus(); // safe default: Enter does not accept by accident
+
+            function close(result) {
+                modal.hidden = true;
+                acceptBtn.removeEventListener('click', onAccept);
+                cancelBtn.removeEventListener('click', onCancel);
+                document.removeEventListener('keydown', onKey, true);
+                resolve(result);
+            }
+            function onAccept() { close(true); }
+            function onCancel() { close(false); }
+            function onKey(e) {
+                if (e.key === 'Escape') { e.preventDefault(); close(false); }
+                else if (e.key === 'Tab') { // keep focus inside the dialog
+                    e.preventDefault();
+                    const i = focusables.indexOf(document.activeElement);
+                    const next = e.shiftKey ? (i <= 0 ? focusables.length - 1 : i - 1) : (i + 1) % focusables.length;
+                    focusables[next].focus();
+                }
+            }
+            acceptBtn.addEventListener('click', onAccept);
+            cancelBtn.addEventListener('click', onCancel);
+            document.addEventListener('keydown', onKey, true);
+        });
+    }
 
     function generateDesignPoints(factors, designType, allWarningsRef, designStateRef = {}) {
         designStateRef.fellBackToFullFactorial = false;
@@ -530,7 +860,7 @@ document.addEventListener('DOMContentLoaded', () => {
     async function calculateAndSave() {
         const generateButton = document.getElementById('generateButton');
         const originalButtonContent = generateButton.innerHTML;
-        generateButton.innerHTML = `<i class="fas fa-spinner fa-spin"></i> CALCULATING...`;
+        generateButton.innerHTML = `<svg class="icon spin" aria-hidden="true"><use href="#i-loader"/></svg> CALCULATING...`;
         generateButton.disabled = true;
         await new Promise(resolve => setTimeout(resolve, 50));
 
@@ -572,7 +902,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const resultsContainer = document.querySelector('.results-section');
 
         warningMessageElement.innerHTML = ''; warningMessageElement.style.display = 'none';
-        refillSummaryDiv.style.display = 'none'; refillSummaryDiv.innerHTML = `<h3><i class="fas fa-syringe"></i> Refill Requirements Summary</h3><p>Details will appear here after generating the plan.</p>`;
+        refillSummaryDiv.style.display = 'none'; refillSummaryDiv.innerHTML = `<h3><svg class="icon" aria-hidden="true"><use href="#i-clipboard"/></svg> Refill Requirements Summary</h3><p>Details will appear here after generating the plan.</p>`;
         downloadLink.style.display = 'none'; resultsDiv.innerHTML = `<pre>Click "Generate Plan" to see the output.</pre>`;
 
         let allWarnings = []; let canGenerateJson = true;
@@ -589,7 +919,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (mM_A < 0 || mM_B < 0) { allWarnings.push("<strong>Input Error:</strong> Concentrations (mM) must be non-negative."); canGenerateJson = false; }
         if (V1_uL < 0 || V2_uL < 0) { allWarnings.push("<strong>Input Error:</strong> Dead Volumes (µL) must be non-negative."); canGenerateJson = false; }
         if (maxVolumeA_uL <= 0 || maxVolumeB_uL <= 0) { allWarnings.push("<strong>Input Error:</strong> Max Syringe Volumes (µL) must be positive."); canGenerateJson = false; }
-        if (refillPauseDurationCustom_min < 0) { allWarnings.push("<strong>Input Error:</strong> Refill Pause Duration (min) must be non-negative."); canGenerateJson = false; }
+        if (refillPauseDurationCustom_min < MIN_REFILL_PAUSE_MIN) { allWarnings.push(`<strong>Input Error:</strong> Refill Pause Duration must be at least ${MIN_REFILL_PAUSE_MIN} min.`); canGenerateJson = false; }
         if (Dm_m2_s <= 0 || radius_mm <= 0) { allWarnings.push("<strong>Input Error:</strong> Diffusion Coeff and Tube Radius must be positive."); canGenerateJson = false; }
         if (postCollectionFlushTime_min_input < 0) { allWarnings.push("<strong>Input Error:</strong> Post-Collection Flush Time must be a non-negative number."); canGenerateJson = false; }
         if (minRT <=0 || maxRT <=0 || minRT > maxRT) { allWarnings.push("<strong>Input Error:</strong> Residence Times (min) must be positive and Min RT ≤ Max RT."); canGenerateJson = false; }
@@ -602,8 +932,12 @@ document.addEventListener('DOMContentLoaded', () => {
             generateButton.innerHTML = originalButtonContent; generateButton.disabled = false; return;
         }
 
-        const assignedPumps = [pumpA_name, pumpB_name, pumpC_for_json];
-        if (new Set(assignedPumps).size < assignedPumps.length) { allWarnings.push("<strong>Pump Assignment Note:</strong> Duplicate pump assignments detected. Ensure this is intended."); }
+        // Pump routing issues: shown as warnings and must be accepted before the plan is shown (see below).
+        const pumpIssues = getPumpRoutingIssues(pumpA_name, pumpB_name, pumpC_for_json);
+        const duplicatePumpWarning = pumpIssues.duplicates.length > 0
+            ? `<strong>Pump Assignment Warning:</strong> ${pumpIssues.duplicates.join('; ')}. The plan sums these channels' flows on one pump, which cannot deliver two different liquids, and syringe volumes are tracked per channel, not per pump.`
+            : null;
+        if (duplicatePumpWarning) allWarnings.push(duplicatePumpWarning);
 
         let factorDefinitions = [
             { name: 'RT', min: minRT, max: maxRT, isConstant: Math.abs(minRT - maxRT) < 1e-9 },
@@ -636,6 +970,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const allPumpNames = ["PS1", "PS2", "PS3", "PS4", "Kn1", "Kn2", "Kn3"];
         let cumulative_time_elapsed_overall_min = 0;
         let experimentCounter = 0;
+        const swampedSlugExps = []; // experiments whose slug never reaches full concentration (UI warning only)
 
         for (const point of designPoints) {
             experimentCounter++;
@@ -670,9 +1005,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (flow_active_AB_uL_min < 1e-9) { flowA_uL_min = 0; flowB_uL_min = 0; }
             else if (mM_A < 1e-9 && mM_B < 1e-9) { 
                 flowA_uL_min = flow_active_AB_uL_min / 2; flowB_uL_min = flow_active_AB_uL_min / 2;
-            } else if (mM_B < 1e-9 || molarRatioBA_current > 1e9) { 
+            } else if (mM_B < 1e-9) { 
                 flowA_uL_min = flow_active_AB_uL_min; flowB_uL_min = 0;
-                if (mM_B < 1e-9 && molarRatioBA_current > 1e-9) {
+                if (molarRatioBA_current > 1e-9) {
                     currentExpWarnings.push(`<strong>Warning (Exp ${experimentCounter}):</strong> Concentration of Sample B is 0 mM, so the requested molar ratio B/A = ${molarRatioBA_current.toFixed(2)} cannot be delivered. Pump B is set to 0 µL/min and the active flow is assigned entirely to A (actual B/A = 0).`);
                 }
             } else if (mM_A < 1e-9) { 
@@ -680,6 +1015,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (molarRatioBA_current < 1e9) {
                     currentExpWarnings.push(`<strong>Warning (Exp ${experimentCounter}):</strong> Concentration of Sample A is 0 mM, so the requested molar ratio B/A = ${molarRatioBA_current.toFixed(2)} cannot be delivered. Pump A is set to 0 µL/min and the active flow is assigned entirely to B (actual B/A is infinite).`);
                 }
+            } else if (molarRatioBA_current > 1e9) {
+                // Requested B/A is effectively infinite: deliver B only (previously inverted to A only).
+                flowA_uL_min = 0; flowB_uL_min = flow_active_AB_uL_min;
             } else { 
                 const denominator = (1 + molarRatioBA_current * (mM_A / mM_B));
                 if (Math.abs(denominator) < 1e-9) { 
@@ -782,6 +1120,12 @@ document.addEventListener('DOMContentLoaded', () => {
 const V_disp_calculated = calculateDispersionVolume(V_system, Q_total_uL_min, Dm_m2_s, radius_mm);
 const V_disp_front = V_disp_calculated;
 const V_disp_back = V_disp_calculated;
+
+// Slug-center peak concentration (fraction of nominal). UI warning only; not written to the JSON.
+const slugPeakFraction = erf(V_slug_input_uL / (Math.SQRT2 * V_disp_calculated));
+if (slugPeakFraction < SLUG_PEAK_MIN_FRACTION) {
+    swampedSlugExps.push({ exp: experimentCounter, peak: slugPeakFraction, vdisp: V_disp_calculated });
+}
 
 
          //   const V_system = V1_uL + VR_uL + V2_uL;
@@ -1006,17 +1350,73 @@ const V_disp_back = V_disp_calculated;
             warningMessageElement.innerHTML = `<strong style="color: var(--critical-error-text);">PLAN GENERATION ABORTED:</strong><br>${allWarnings.join('<br><br>')}`;
             warningMessageElement.className = 'alert critical-error'; warningMessageElement.style.display = 'block';
         } else if (experimentPlan.length > 0) {
+            let totalSolventC_overall_uL = totalSolventC_mixed_in_slug_uL + totalSolventC_push_flush_uL;
+            const totalTubesNeeded = nextAvailableTubeNumber - 1;
+
+            // ---- UI-only warnings (shown on the page, never written to the JSON) ----
+            const V_outside_reactor_uL = V1_uL + V2_uL;
+            const outsideFraction = V_outside_reactor_uL / VR_uL;
+            if (outsideFraction > OUTSIDE_REACTOR_WARN_FRACTION) {
+                const rtValues = designPoints.map(p => Number(p.RT)).filter(v => isFinite(v) && v > 0);
+                const rtLo = Math.min(...rtValues), rtHi = Math.max(...rtValues);
+                const fmt = v => parseFloat(v.toFixed(2));
+                const extra = rt => `+${(rt * outsideFraction).toFixed(1)} min at RT ${fmt(rt)} min`;
+                const rtText = (rtHi - rtLo > 1e-9) ? `${extra(rtLo)}, ${extra(rtHi)}` : extra(rtLo);
+                allWarnings.push(`<strong>Residence Time Warning:</strong> RT counts only the reactor (VR = ${VR_uL} µL). Before collection, the mixture also spends V1 + V2 = ${V_outside_reactor_uL} µL outside the temperature-controlled reactor (+${(outsideFraction * 100).toFixed(0)}% of RT: ${rtText}) and keeps reacting there. Quench at the reactor outlet or account for this extra time in the analysis.`);
+            }
+
+            if (swampedSlugExps.length > 0) {
+                const peaks = swampedSlugExps.map(s => s.peak * 100);
+                const pLo = Math.min(...peaks), pHi = Math.max(...peaks);
+                const worstVdisp = Math.max(...swampedSlugExps.map(s => s.vdisp));
+                const expNums = swampedSlugExps.map(s => s.exp);
+                const expText = expNums.length > 12 ? `${expNums.slice(0, 12).join(', ')}, ...` : expNums.join(', ');
+                const peakText = (pHi - pLo < 0.05) ? `${pLo.toFixed(1)}%` : `${pLo.toFixed(1)}–${pHi.toFixed(1)}%`;
+                allWarnings.push(`<strong>Dispersion Warning:</strong> In ${expNums.length} experiment(s) (Exp ${expText}) the dispersion band swamps the slug: the slug center only reaches ${peakText} of nominal concentration, so no fraction is collected at full concentration. Increase the slug volume to at least ~${Math.ceil(SLUG_FOR_95_PEAK_FACTOR * worstVdisp)} µL (currently ${V_slug_input_uL} µL).`);
+            }
+
+            let solventCWarning = null;
+            if (pumpIssues.solventCOnSyringe) {
+                solventCWarning = `<strong>Solvent C Warning:</strong> Solvent C runs on ${pumpC_for_json}, a syringe pump, not an HPLC pump. This plan needs ${(totalSolventC_overall_uL / 1000).toFixed(2)} mL of C (${(totalSolventC_mixed_in_slug_uL / 1000).toFixed(2)} mL in slugs, ${(totalSolventC_push_flush_uL / 1000).toFixed(2)} mL for push/collection/flush), but C is not checked against syringe capacity and no refill is planned for C.`;
+                allWarnings.push(solventCWarning);
+            }
+
+            const factorLevelRows = [
+                ['RT', 'Residence time (min)'], ['RatioBA', 'Molar ratio B/A'],
+                ['AFF', 'Active flow fraction'], ['Temp', 'Temperature (°C)']
+            ].map(([key, label]) => {
+                const levels = [...new Set(designPoints.map(p => parseFloat(Number(p[key]).toFixed(3))))].sort((a, b) => a - b);
+                return `<li>${label}: ${levels.join(', ')}</li>`;
+            }).join('');
+
+            // ---- Pump routing issues must be explicitly accepted before the plan is shown ----
+            const ackItems = [];
+            if (duplicatePumpWarning) ackItems.push(duplicatePumpWarning);
+            if (solventCWarning) ackItems.push(solventCWarning);
+            if (ackItems.length > 0) {
+                const accepted = await confirmAcknowledge(ackItems);
+                if (!accepted) {
+                    resultsDiv.innerHTML = `<pre>Plan not shown: the pump routing issues were not accepted.\nChange the pump routing, or generate again and accept.</pre>`;
+                    warningMessageElement.innerHTML = `<strong style="color: var(--critical-error-text);">PLAN NOT SHOWN:</strong> the pump routing issues below were not accepted.<br><br>${ackItems.join('<br><br>')}`;
+                    warningMessageElement.className = 'alert critical-error'; warningMessageElement.style.display = 'block';
+                    downloadLink.style.display = 'none'; refillSummaryDiv.style.display = 'none';
+                    generateButton.innerHTML = originalButtonContent; generateButton.disabled = false;
+                    return;
+                }
+                allWarnings.push(`<strong>Accepted by user:</strong> the pump routing ${ackItems.length === 1 ? 'issue' : 'issues'} above.`);
+            }
+
             resultsDiv.innerHTML = `<pre>${JSON.stringify(experimentPlan[0], null, 2)}</pre>`;
             if (allWarnings.length === 0) {
-                warningMessageElement.innerHTML = "<strong><i class='fas fa-check-circle'></i> Status:</strong> Plan generated successfully.";
+                warningMessageElement.innerHTML = "<strong><svg class='icon' aria-hidden='true'><use href='#i-check'/></svg> Status:</strong> Plan generated successfully.";
                 warningMessageElement.className = 'alert success';
             } else {
-                warningMessageElement.innerHTML = `<strong><i class='fas fa-exclamation-triangle'></i> Status:</strong> Plan generated with warnings/notes:<br>${allWarnings.join('<br><br>')}`;
+                warningMessageElement.innerHTML = `<strong><svg class='icon' aria-hidden='true'><use href='#i-alert'/></svg> Status:</strong> Plan generated with warnings/notes:<br>${allWarnings.join('<br><br>')}`;
                 warningMessageElement.className = 'alert warning';
             }
             warningMessageElement.style.display = 'block';
 
-            let totalSolventC_overall_uL = totalSolventC_mixed_in_slug_uL + totalSolventC_push_flush_uL; 
+            // (totalSolventC_overall_uL is computed above, before the acceptance step)
             let summaryDesignType = originalSelectedDesignType;
              if (summaryDesignType === 'CentralCompositeSimple') {
                 summaryDesignType = 'Central Composite (simple, alpha=1)';
@@ -1026,13 +1426,14 @@ const V_disp_back = V_disp_calculated;
             }
 
             refillSummaryDiv.innerHTML = `
-                <h3><i class="fas fa-syringe"></i> Overall Sequence Summary</h3>
+                <h3><svg class="icon" aria-hidden="true"><use href="#i-clipboard"/></svg> Overall Sequence Summary</h3>
                 <ul>
                     <li>Total experiments generated: <strong>${experimentPlan.length}</strong> (using ${summaryDesignType} design)</li>
                     <li>Total estimated refills for Pump A (${pumpA_name}): <strong>${totalRefillsA}</strong></li>
                     <li>Total estimated refills for Pump B (${pumpB_name}): <strong>${totalRefillsB}</strong></li>
                     <li>Total estimated refill pauses (each ${formatDuration(refillPauseDurationCustom_min)}): <strong>${totalRefillPauses}</strong></li>
                     <li>Total sequence duration (all experiments): <strong>${formatDuration(cumulative_time_elapsed_overall_min)}</strong></li>
+                    <li>Fraction collector: <strong>${totalTubesNeeded} tubes</strong> (tubes 1–${totalTubesNeeded}). Collector capacity is not checked: make sure your rack holds them all.</li>
                 </ul>
                 <h4>Total Estimated Reagent/Solvent Usage:</h4>
                 <ul>
@@ -1046,6 +1447,8 @@ const V_disp_back = V_disp_calculated;
                         </ul>
                     </li>
                 </ul>
+                <h4>Factor Levels Used:</h4>
+                <ul>${factorLevelRows}</ul>
                 <p style="font-size:0.85em; margin-top:1em;">Note: Refill pauses are scheduled at the beginning of an experiment if its reagent volume requirements exceed available syringe capacity. Ensure sufficient total sample volume is prepared.</p>
             `;
             refillSummaryDiv.style.display = 'block';
@@ -1055,7 +1458,7 @@ const V_disp_back = V_disp_calculated;
             downloadLink.setAttribute("href", dataStr);
             const fileDesignTag = designFellBackToFullFactorial ? `${originalSelectedDesignType}-fallbackFullFactorial` : originalSelectedDesignType;
             downloadLink.setAttribute("download", `microreactor_plan_${fileDesignTag}_${timestamp}.json`);
-            downloadLink.innerHTML = '<i class="fas fa-download"></i> Download Full Experiment Plan (JSON)';
+            downloadLink.innerHTML = '<svg class="icon" aria-hidden="true"><use href="#i-download"/></svg> Download Full Experiment Plan (JSON)';
             downloadLink.style.display = 'flex';
 
         } else { 
