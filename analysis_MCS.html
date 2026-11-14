@@ -184,7 +184,7 @@
 </div>
 
 <footer class="fixed bottom-0 w-full bg-white border-t border-slate-200 py-2 text-center z-40 no-print">
-    <p class="text-[10px] text-slate-400 font-mono uppercase tracking-widest">v14.8 - 20 Sept 2026 - NitaD & MCS Univ Paris-Saclay</p>
+    <p class="text-[10px] text-slate-400 font-mono uppercase tracking-widest">v14.9 - 14 Nov 2026 - NitaD & MCS Univ Paris-Saclay</p>
 </footer>
 
 
@@ -459,7 +459,8 @@ function handleTableInputChange(e) {
             value = clamp(value, 0, 100);
         } else if (metric === 'setting') {
             const factor = String(e.target.dataset.factor).toLowerCase();
-            if ((factor.includes('time') || factor.includes('ratio')) && value <= 0) value = 0.01;
+            if (factor.includes('time') && value <= 0) value = 0.01;
+            else if (factor.includes('ratio') && value < 0) value = 0;
         }
     }
 

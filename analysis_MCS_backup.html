@@ -490,9 +490,8 @@ function handleTableInputChange(e) {
         } 
         else if (metric === 'setting') {
             const factor = e.target.dataset.factor.toLowerCase();
-            if (factor.includes('time') || factor.includes('ratio')) {
-                if (value <= 0) value = 0.01;
-            }
+            if (factor.includes('time') && value <= 0) value = 0.01;
+            else if (factor.includes('ratio') && value < 0) value = 0;
         }
     }
 
@@ -580,21 +579,40 @@ function uncodeValue(c, lo, hi) { return lo + (c + 1) / 2 * (hi - lo); }
  *    score = wYield*(yield/100) + wSelectivity*(selectivity/100)
  *  This normalised composite [0,1] is the y-vector for the "Weighted Score" model.
  */
+function computeScores() {
+    const wY = Number(yieldWeightSlider.value) / 100;
+    const wS = Number(selectivityWeightSlider.value) / 100;
+
+    const anyYield = experimentData.some((d) => d.yield !== null);
+    const anySelec = experimentData.some((d) => d.selectivity !== null);
+
+    let wYe = anyYield ? wY : 0;
+    let wSe = anySelec ? wS : 0;
+    const tot = wYe + wSe;
+    if (tot > 0) { wYe /= tot; wSe /= tot; }
+
+    experimentData.forEach((exp) => {
+        if (tot <= 0) { exp.score = null; return; }
+        const missing = (wYe > 0 && exp.yield === null) || (wSe > 0 && exp.selectivity === null);
+        exp.score = missing ? null : wYe * ((exp.yield ?? 0) / 100) + wSe * ((exp.selectivity ?? 0) / 100);
+    });
+}
+
 function analyzeData() {
     if (experimentData.length === 0) return;
-    let bestYield = { value: -1, exp: null }, bestSelectivity = { value: -1, exp: null }, bestOverall = { value: -1, exp: null };
-    const wYield = yieldWeightSlider.value / 100, wSelectivity = selectivityWeightSlider.value / 100;
+    computeScores();
+
+    let bestYield       = { value: -Infinity, exp: null };
+    let bestSelectivity = { value: -Infinity, exp: null };
+    let bestOverall     = { value: -Infinity, exp: null };
 
     experimentData.forEach((exp, index) => {
-        const cy = exp.yield ?? 0, cs = exp.selectivity ?? 0;
-        exp.score = wYield * (cy / 100) + wSelectivity * (cs / 100);
-
-
         const scoreCell = tableBody.querySelector(`tr[data-index="${index}"] .score-cell`);
-        if (scoreCell) scoreCell.textContent = (exp.yield !== null || exp.selectivity !== null) ? exp.score.toFixed(3) : '-';
-        if (exp.yield       !== null && exp.yield       > bestYield.value)       bestYield       = { value: exp.yield,       exp };
+        if (scoreCell) scoreCell.textContent = (exp.score !== null) ? exp.score.toFixed(3) : '-';
+
+        if (exp.yield       !== null && exp.yield       > bestYield.value)       bestYield       = { value: exp.yield, exp };
         if (exp.selectivity !== null && exp.selectivity > bestSelectivity.value) bestSelectivity = { value: exp.selectivity, exp };
-        if ((exp.yield !== null || exp.selectivity !== null) && exp.score > bestOverall.value) bestOverall = { value: exp.score, exp };
+        if (exp.score       !== null && exp.score       > bestOverall.value)     bestOverall     = { value: exp.score, exp };
     });
 
     displayOptimum(bestYieldEl,       bestYieldExpEl,       bestYield,       '%');
@@ -608,10 +626,9 @@ function displayOptimum(valueEl, expEl, result, unit, precision = 1) {
     else { valueEl.textContent = '-'; expEl.textContent = ''; }
 }
 
-// Helper: valid response value 
+// Helper: valid response value
 function getResponseValue(exp, key) {
-    if (key === 'score') return exp.score;   // score is always computed
-    return exp[key];                          // yield or selectivity (may be null)
+    return exp[key];
 }
 
 // fit a quadratic ou lineaire, dans -1 à 1
@@ -638,13 +655,14 @@ function buildModel2F(factorXName, factorYName, yKey) {
     const Xmat = dataPoints.map(p => {
         const xc = codeValue(p.settings[factorXName], xMin, xMax);
         const yc = codeValue(p.settings[factorYName], yMin, yMax);
-        return isQuad ? [1, xc, yc, xc*yc, xc*xc, yc*yc] : [1, xc, yc, xc*yc, 0, 0];
+        return isQuad ? [1, xc, yc, xc*yc, xc*xc, yc*yc] : [1, xc, yc, xc*yc];
     });
     const yMat    = dataPoints.map(p => [getResponseValue(p, yKey)]);
     const Xt      = matrix.transpose(Xmat);
     const XtX_inv = matrix.invert(matrix.multiply(Xt, Xmat));
     if (!XtX_inv) return null;
-    const B = matrix.multiply(XtX_inv, matrix.multiply(Xt, yMat)).map(c => c[0]);
+    const rawB = matrix.multiply(XtX_inv, matrix.multiply(Xt, yMat)).map(c => c[0]);
+    const B = isQuad ? rawB : [rawB[0], rawB[1], rawB[2], rawB[3], 0, 0];
 
     return { coeffs: B, xMin, xMax, yMin, yMax, isQuad };
 }
